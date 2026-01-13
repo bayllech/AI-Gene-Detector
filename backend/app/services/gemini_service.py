@@ -16,34 +16,26 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Gemini 系统提示词（来自设计文档）
-SYSTEM_INSTRUCTION = """你是一位精通计算机视觉与人类遗传学的专家。你的任务是分析家庭照片，通过对比父母与孩子的面部特征，识别遗传相似性。
+SYSTEM_INSTRUCTION = """Role: 你是一位精通计算机视觉和图像解析的专家，擅长对图像中的关键点进行像素级分析和坐标归一化计算，同时精通人类遗传学特征分析。
+Task: 请分析上传的图片，精准定位图中孩子鼻尖的位置，计算脸部宽度比例，并对比父母与孩子的面部特征识别遗传相似性。
 
-**核心任务：**
-1. **分析遗传特征**：对比孩子与父母的特定五官部位，判断更像谁。
-2. **定位脸部中心**：在孩子照片中，找出**鼻尖**的精确位置作为脸部中心参考点。
+**Coordinate System Definition (严格遵守):**
+*   原点 (0,0)：位于图片的左上角。
+*   终点 (100,100)：位于图片的右下角。
+*   X 轴：从左向右延伸，范围 0 到 100。
+*   Y 轴：从上向下延伸，范围 0 到 100。
 
+**Key Points to Identify:**
+*   **face_center (鼻尖坐标)**: 请仔细观察孩子鼻子的轮廓，找到鼻尖（最突出点）的正中心位置。
+*   **face_width (脸部宽度比例)**: 测量孩子面部左右最宽处（通常为两颊边缘）的距离，并将其转换为占整张图片宽度的百分比（0-100 之间的数值）。
+
+**核心分析任务（遗传特征）：**
 **分析部位（固定7项，严禁增减）：**
 1. 眉毛、2. 眼睛、3. 鼻子、4. 嘴巴、5. 脸型、6. 头型、7. 总结
 
 **关于分数：**
 *   子项分数：根据相似程度客观打分（50-99）。
 *   **总结分数**：综合判定孩子与父母的整体相似度百分比（取整数），无需严格等于平均值。
-
-**坐标系定义（极其重要）：**
-*   图片**左上角**是 (0, 0)。
-*   图片**右下角**是 (100, 100)。
-*   **x 轴**：从左到右，0→100。
-*   **y 轴**：从上到下，0→100。
-*   **示例**：如果鼻尖在图片正中央，则 face_center = {x: 50, y: 50}。
-*   **示例**：如果鼻尖在图片右上角附近，则 face_center = {x: 80, y: 20}。
-*   **示例**：如果鼻尖在图片左下角附近，则 face_center = {x: 20, y: 80}。
-
-**关于 face_center：**
-*   这是孩子**鼻尖**在图片中的精确位置。
-*   请仔细观察孩子的鼻子，找到鼻尖的像素位置，然后转换为百分比坐标。
-
-**关于 face_width：**
-*   孩子脸部宽度（从左脸颊到右脸颊）占整个图片宽度的百分比（通常在 20-60 之间）。
 
 **输出格式：**
 直接返回纯 JSON。
@@ -171,10 +163,15 @@ class GeminiService:
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0.5,
+                    # temperature=0.5, # Thinking models perform better with default/auto temperature
                     max_output_tokens=8192,
                     response_mime_type="application/json",
-                    response_schema=response_schema
+                    response_schema=response_schema,
+                    # Enable Chain of Thought reasoning for better accuracy
+                    # 使用 thinking_level="HIGH" 以匹配 AI Studio 的配置
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level="HIGH"
+                    )
                 )
             )
             

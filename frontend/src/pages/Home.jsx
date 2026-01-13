@@ -62,7 +62,7 @@ export default function Home() {
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="z-10 w-full max-w-md space-y-8"
+                className="z-10 w-full max-w-md md:max-w-3xl lg:max-w-4xl space-y-8 flex flex-col items-center"
             >
                 <div className="text-center space-y-2">
                     <div className="flex justify-center mb-6">
@@ -99,7 +99,7 @@ export default function Home() {
                     </div>
                 </div>
 
-                <div className="bg-surface/80 backdrop-blur-xl p-6 rounded-2xl border border-slate-700 shadow-xl">
+                <div className="bg-surface/80 backdrop-blur-xl p-6 rounded-2xl border border-slate-700 shadow-xl w-full max-w-md">
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-300 ml-1">

@@ -86,29 +86,35 @@ async def verify_authorization(
     return card
 
 
-def process_image(file_bytes: bytes, max_size: int = 1024) -> bytes:
+def process_image(file_bytes: bytes, max_size: int = 2048) -> bytes:
     """
     处理上传的图片：
     1. 验证格式
-    2. 压缩到合理尺寸（节省 API 调用成本）
+    2. 适度压缩（保持高精度以确保坐标准确）
     3. 转换为 JPEG
+    
+    注意：max_size 从 1024 提升到 2048，以减少压缩导致的坐标偏差
     """
     try:
         img = Image.open(io.BytesIO(file_bytes))
+        original_size = img.size
         
         # 转换为 RGB（去除透明通道）
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         
-        # 按比例缩放
+        # 按比例缩放（提高阈值以保持更高分辨率）
         if max(img.size) > max_size:
             ratio = max_size / max(img.size)
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
+            logger.info(f"图片已压缩: {original_size} -> {img.size}")
+        else:
+            logger.info(f"图片无需压缩: {original_size}")
         
-        # 转为 JPEG bytes
+        # 转为 JPEG bytes（提高质量到 95）
         buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
+        img.save(buffer, format="JPEG", quality=95)
         return buffer.getvalue()
     
     except Exception as e:

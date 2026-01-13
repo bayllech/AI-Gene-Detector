@@ -84,8 +84,8 @@ export default function Upload() {
                 <p className="text-sm text-slate-500 mt-1">请确保五官清晰，无遮挡</p>
             </header>
 
-            <main className="flex-1 max-w-md mx-auto w-full space-y-6 pb-24">
-                <div className="grid grid-cols-2 gap-4">
+            <main className="flex-1 max-w-md md:max-w-3xl lg:max-w-4xl mx-auto w-full space-y-6 pb-24">
+                <div className="grid grid-cols-2 gap-4 max-w-md mx-auto w-full">
                     <ImageSlot
                         label="父亲"
                         value={images.father}
@@ -100,7 +100,7 @@ export default function Upload() {
                     />
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 max-w-md mx-auto w-full">
                     <ImageSlot
                         label="孩子 (关键)"
                         required
@@ -115,7 +115,7 @@ export default function Upload() {
             </main>
 
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-lg border-t border-slate-800">
-                <div className="max-w-md mx-auto">
+                <div className="max-w-md md:max-w-3xl lg:max-w-4xl mx-auto">
                     <Button
                         className="w-full text-lg shadow-lg shadow-primary/20"
                         size="lg"

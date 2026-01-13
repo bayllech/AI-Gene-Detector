@@ -63,7 +63,7 @@ export default function Analyze() {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-black relative overflow-hidden p-6">
             <div className="absolute inset-0 z-0">
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[100px] animate-pulse-slow" />
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[80vw] max-w-[800px] h-[80vw] max-h-[800px] bg-primary/10 rounded-full blur-[100px] animate-pulse-slow" />
             </div>
 
             <div className="z-10 flex flex-col items-center w-full max-w-sm">
