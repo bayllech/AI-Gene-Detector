@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.models import CardKey, CardStatus
 from app.services.gemini_service import gemini_service
 from PIL import Image
+from PIL import ImageOps
 import io
 import logging
 
@@ -86,18 +87,22 @@ async def verify_authorization(
     return card
 
 
-def process_image(file_bytes: bytes, max_size: int = 2048) -> bytes:
+def process_image(file_bytes: bytes, max_size: int = 8192) -> bytes:
     """
     处理上传的图片：
     1. 验证格式
-    2. 适度压缩（保持高精度以确保坐标准确）
+    2. 保留原图分辨率（仅在超大图片时压缩）
     3. 转换为 JPEG
-    
-    注意：max_size 从 1024 提升到 2048，以减少压缩导致的坐标偏差
+
+    注意：max_size 提升到 8192px，确保坐标精度
+    Gemini 2.5 支持最大 7MB，Gemini 3 支持最大 20MB
     """
     try:
         img = Image.open(io.BytesIO(file_bytes))
         original_size = img.size
+
+        # 统一方向（避免 EXIF Orientation 导致“同图不同坐标”）
+        img = ImageOps.exif_transpose(img)
         
         # 转换为 RGB（去除透明通道）
         if img.mode in ("RGBA", "P"):
@@ -117,6 +122,111 @@ def process_image(file_bytes: bytes, max_size: int = 2048) -> bytes:
         img.save(buffer, format="JPEG", quality=95)
         return buffer.getvalue()
     
+    except Exception as e:
+        logger.error(f"图片处理失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="图片格式无效或已损坏"
+        )
+
+
+def _normalize_mime_type(content_type: Optional[str]) -> Optional[str]:
+    if not content_type:
+        return None
+    ct = content_type.strip().lower()
+    if ct == "image/jpg":
+        return "image/jpeg"
+    if ct.startswith("image/"):
+        return ct
+    return None
+
+
+def _pil_format_to_mime(pil_format: Optional[str]) -> Optional[str]:
+    if not pil_format:
+        return None
+    fmt = pil_format.upper()
+    if fmt == "JPEG":
+        return "image/jpeg"
+    if fmt == "PNG":
+        return "image/png"
+    if fmt == "WEBP":
+        return "image/webp"
+    if fmt == "GIF":
+        return "image/gif"
+    if fmt == "BMP":
+        return "image/bmp"
+    if fmt == "TIFF":
+        return "image/tiff"
+    return None
+
+
+def prepare_image_for_gemini(
+    file_bytes: bytes,
+    content_type: Optional[str],
+    *,
+    max_dim: int = 8192,
+    max_bytes: int = 20 * 1024 * 1024,
+) -> tuple[bytes, str]:
+    """
+    为 Gemini 准备图片输入：优先保持原始文件字节，以最大化与 AI Studio 对齐。
+
+    常见偏移根因：
+    - 后端把上传图片重新编码成 JPEG，丢失 EXIF 方向等元数据；
+    - 前端展示的是原文件（浏览器会自动应用 EXIF 方向），导致“模型看到的图”和“用户看到的图”不一致；
+    - 或 mime_type 声明不匹配，导致服务端解码行为异常。
+
+    返回：(bytes, mime_type)
+    """
+    normalized_ct = _normalize_mime_type(content_type)
+
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        pil_mime = _pil_format_to_mime(img.format)
+        mime_type = normalized_ct or pil_mime or "image/jpeg"
+
+        exif = getattr(img, "getexif", lambda: None)()
+        orientation = 1
+        if exif:
+            orientation = int(exif.get(274, 1) or 1)
+
+        within_dim = max(img.size) <= max_dim
+        within_bytes = len(file_bytes) <= max_bytes
+
+        orientation_ok = (orientation == 1)
+        keep_mimes = {"image/jpeg", "image/png", "image/webp"}
+
+        # 满足条件就不做任何处理：保持字节不变（最贴近 AI Studio 行为）
+        # - JPEG 额外要求 EXIF Orientation 为 1（否则用户看到的方向可能与模型解码方向不一致）
+        if (
+            mime_type in keep_mimes
+            and within_dim
+            and within_bytes
+            and (mime_type != "image/jpeg" or orientation_ok)
+        ):
+            logger.info(
+                f"图片保持原始字节发送 Gemini: mime={mime_type}, size={img.size}, bytes={len(file_bytes)}"
+            )
+            return file_bytes, mime_type
+
+        # 否则：做最小必要的标准化（方向/透明通道/超大尺寸/输出格式）
+        img = ImageOps.exif_transpose(img)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        if max(img.size) > max_dim:
+            ratio = max_dim / max(img.size)
+            new_size = (int(img.width * ratio), int(img.height * ratio))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=95)
+        out_bytes = buffer.getvalue()
+        logger.info(
+            "图片已标准化后发送 Gemini: "
+            f"in_mime={mime_type}, in_size={img.size}, in_bytes={len(file_bytes)}, "
+            f"out_mime=image/jpeg, out_bytes={len(out_bytes)}"
+        )
+        return out_bytes, "image/jpeg"
     except Exception as e:
         logger.error(f"图片处理失败: {e}")
         raise HTTPException(
@@ -150,16 +260,30 @@ async def analyze_photos(
         )
     
     # 读取并处理图片
-    child_bytes = process_image(await child.read())
-    father_bytes = process_image(await father.read()) if father else None
-    mother_bytes = process_image(await mother.read()) if mother else None
+    child_bytes_raw = await child.read()
+    child_bytes, child_mime_type = prepare_image_for_gemini(child_bytes_raw, child.content_type)
+
+    father_bytes = None
+    father_mime_type = None
+    if father:
+        father_bytes_raw = await father.read()
+        father_bytes, father_mime_type = prepare_image_for_gemini(father_bytes_raw, father.content_type)
+
+    mother_bytes = None
+    mother_mime_type = None
+    if mother:
+        mother_bytes_raw = await mother.read()
+        mother_bytes, mother_mime_type = prepare_image_for_gemini(mother_bytes_raw, mother.content_type)
     
     try:
         # 调用 Gemini 分析
         result = await gemini_service.analyze_family_photos(
             child_image=child_bytes,
+            child_mime_type=child_mime_type,
             father_image=father_bytes,
-            mother_image=mother_bytes
+            father_mime_type=father_mime_type,
+            mother_image=mother_bytes,
+            mother_mime_type=mother_mime_type,
         )
         
         # 缓存结果到数据库

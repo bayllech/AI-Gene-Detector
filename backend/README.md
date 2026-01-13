@@ -33,6 +33,10 @@ cp .env.example .env
 # 编辑 .env 文件，填写你的 Gemini API Key
 ```
 
+可选参数（用于对齐 AI Studio / 调优坐标稳定性）：
+- `GEMINI_TEMPERATURE`：建议先试 `0-0.3`（更稳定），默认 `1.0`（更有创意）
+- `GEMINI_ENABLE_THINKING`：`true/false`，默认 `true`
+
 ### 4. 启动服务
 
 ```bash
@@ -105,3 +109,12 @@ gunicorn app.main:app -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 ```
 
 对于低配服务器，1-2 个 worker 即可。
+
+## 坐标偏移排查
+
+如果你遇到“同一张照片在 AI Studio 很准、在后端有偏移”，优先检查后端是否对图片做了重编码/缩放/EXIF 方向处理，以及请求里 `mime_type` 是否正确。
+
+本仓库提供了对比脚本（需配置 `GEMINI_API_KEY`）：
+```bash
+python3 debug_coordinates.py /path/to/your.jpg
+```

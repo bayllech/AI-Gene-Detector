@@ -9,6 +9,7 @@ import base64
 from google import genai
 from google.genai import types
 from PIL import Image
+from PIL import ImageOps
 import io
 
 # 加载环境变量
@@ -65,21 +66,48 @@ Task: 请分析上传的图片，精准定位图中孩子鼻尖的位置，计�
     *   **未来寄语**：一句温暖或幽默的成长祝福。
 """
 
-def process_image_like_backend(file_bytes: bytes, max_size: int = 1024) -> tuple[bytes, dict]:
+def prepare_image_like_backend(
+    file_bytes: bytes,
+    content_type: str = "image/jpeg",
+    *,
+    max_dim: int = 8192,
+    max_bytes: int = 20 * 1024 * 1024,
+) -> tuple[bytes, str, dict]:
     """
-    模拟后端的图片处理逻辑
-    返回：处理后的图片 bytes 和 尺寸信息
+    模拟后端 prepare_image_for_gemini 的逻辑：
+    - 尽量保持原始字节（对齐 AI Studio）
+    - 必要时做 EXIF 方向矫正/压缩/转 JPEG
+
+    返回：处理后的图片 bytes、mime_type、以及尺寸信息
     """
     img = Image.open(io.BytesIO(file_bytes))
     original_size = img.size
+
+    exif = getattr(img, "getexif", lambda: None)()
+    orientation = int(exif.get(274, 1) or 1) if exif else 1
+
+    within_dim = max(img.size) <= max_dim
+    within_bytes = len(file_bytes) <= max_bytes
+
+    if content_type == "image/jpeg" and within_dim and within_bytes and orientation == 1:
+        return file_bytes, content_type, {
+            "original": original_size,
+            "processed": original_size,
+            "ratio": 1.0,
+            "reencoded": False,
+            "orientation": orientation,
+        }
+    
+    # 统一方向
+    img = ImageOps.exif_transpose(img)
     
     # 转换为 RGB
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     
     # 按比例缩放
-    if max(img.size) > max_size:
-        ratio = max_size / max(img.size)
+    if max(img.size) > max_dim:
+        ratio = max_dim / max(img.size)
         new_size = (int(img.width * ratio), int(img.height * ratio))
         img = img.resize(new_size, Image.Resampling.LANCZOS)
     
@@ -87,16 +115,23 @@ def process_image_like_backend(file_bytes: bytes, max_size: int = 1024) -> tuple
     
     # 转为 JPEG bytes
     buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=85)
+    img.save(buffer, format="JPEG", quality=95)
     
-    return buffer.getvalue(), {
+    return buffer.getvalue(), "image/jpeg", {
         "original": original_size,
         "processed": processed_size,
-        "ratio": processed_size[0] / original_size[0] if original_size[0] > 0 else 1
+        "ratio": processed_size[0] / original_size[0] if original_size[0] > 0 else 1,
+        "reencoded": True,
+        "orientation": orientation,
     }
 
 
-def call_gemini_simple(image_bytes: bytes, use_thinking: bool = False, label: str = "测试"):
+def call_gemini_simple(
+    image_bytes: bytes,
+    mime_type: str = "image/jpeg",
+    use_thinking: bool = False,
+    label: str = "测试",
+):
     """
     简化的 Gemini 调用，只获取鼻尖坐标
     """
@@ -133,7 +168,7 @@ def call_gemini_simple(image_bytes: bytes, use_thinking: bool = False, label: st
     parts = [
         types.Part.from_text(text=simple_prompt),
         types.Part.from_text(text="孩子照片："),
-        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
     ]
     
     contents = [types.Content(role="user", parts=parts)]
@@ -179,26 +214,36 @@ def main(image_path: str):
     # 读取原始图片
     with open(image_path, "rb") as f:
         original_bytes = f.read()
+
+    # 粗略推断原图 mime_type（用于避免“字节是 PNG 但声明成 JPEG”）
+    try:
+        img_probe = Image.open(io.BytesIO(original_bytes))
+        fmt = (img_probe.format or "").upper()
+        original_mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}.get(fmt, "image/jpeg")
+    except Exception:
+        original_mime = "image/jpeg"
     
     # 处理图片（模拟后端）
-    processed_bytes, size_info = process_image_like_backend(original_bytes)
+    processed_bytes, processed_mime, size_info = prepare_image_like_backend(original_bytes)
     
     print(f"\n📷 图片信息:")
     print(f"   原始尺寸: {size_info['original']}")
     print(f"   处理后尺寸: {size_info['processed']}")
     print(f"   缩放比例: {size_info['ratio']:.4f}")
+    print(f"   是否重编码: {'是' if size_info.get('reencoded') else '否'}")
+    print(f"   EXIF 方向: {size_info.get('orientation')}")
     
     # 测试 1: 原图 + 无 Thinking
-    result1 = call_gemini_simple(original_bytes, use_thinking=False, label="原图 + 无 Thinking")
+    result1 = call_gemini_simple(original_bytes, mime_type=original_mime, use_thinking=False, label="原图 + 无 Thinking")
     
     # 测试 2: 原图 + 有 Thinking
-    result2 = call_gemini_simple(original_bytes, use_thinking=True, label="原图 + 有 Thinking")
+    result2 = call_gemini_simple(original_bytes, mime_type=original_mime, use_thinking=True, label="原图 + 有 Thinking")
     
     # 测试 3: 压缩图 + 无 Thinking
-    result3 = call_gemini_simple(processed_bytes, use_thinking=False, label="压缩图 (1024px) + 无 Thinking")
+    result3 = call_gemini_simple(processed_bytes, mime_type=processed_mime, use_thinking=False, label="后端实际发送图 + 无 Thinking")
     
     # 测试 4: 压缩图 + 有 Thinking
-    result4 = call_gemini_simple(processed_bytes, use_thinking=True, label="压缩图 (1024px) + 有 Thinking")
+    result4 = call_gemini_simple(processed_bytes, mime_type=processed_mime, use_thinking=True, label="后端实际发送图 + 有 Thinking")
     
     # 汇总对比
     print("\n" + " 结果汇总 ".center(60, "="))

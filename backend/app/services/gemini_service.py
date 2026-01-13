@@ -76,8 +76,11 @@ class GeminiService:
     async def analyze_family_photos(
         self,
         child_image: bytes,
+        child_mime_type: str = "image/jpeg",
         father_image: Optional[bytes] = None,
-        mother_image: Optional[bytes] = None
+        father_mime_type: Optional[str] = None,
+        mother_image: Optional[bytes] = None,
+        mother_mime_type: Optional[str] = None,
     ) -> dict:
         """
         分析家庭照片，识别遗传特征
@@ -127,14 +130,22 @@ class GeminiService:
         
         if father_image:
             parts.append(types.Part.from_text(text="父亲照片："))
-            parts.append(types.Part.from_bytes(data=father_image, mime_type="image/jpeg"))
+            parts.append(
+                types.Part.from_bytes(
+                    data=father_image, mime_type=father_mime_type or "image/jpeg"
+                )
+            )
         
         if mother_image:
             parts.append(types.Part.from_text(text="母亲照片："))
-            parts.append(types.Part.from_bytes(data=mother_image, mime_type="image/jpeg"))
+            parts.append(
+                types.Part.from_bytes(
+                    data=mother_image, mime_type=mother_mime_type or "image/jpeg"
+                )
+            )
         
         parts.append(types.Part.from_text(text="孩子照片（请基于此图输出坐标）："))
-        parts.append(types.Part.from_bytes(data=child_image, mime_type="image/jpeg"))
+        parts.append(types.Part.from_bytes(data=child_image, mime_type=child_mime_type))
         
         contents.append(types.Content(role="user", parts=parts))
         try:
@@ -149,7 +160,8 @@ class GeminiService:
                     if p.text:
                         log_parts.append({"text": p.text[:100] + "..." if len(p.text) > 100 else p.text})
                     elif p.inline_data:
-                        log_parts.append({"inline_data": "<BASE64_IMAGE_DATA_TRUNCATED>"})
+                        mime_type = getattr(p.inline_data, "mime_type", None) or "unknown"
+                        log_parts.append({"inline_data": f"<{mime_type} BASE64_IMAGE_DATA_TRUNCATED>"})
                 log_contents.append({"role": c.role, "parts": log_parts})
             
             logger.info(f"\n🚀 [GEMINI REQUEST START] ----------------------------------\n"
@@ -163,15 +175,14 @@ class GeminiService:
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION,
-                    # temperature=0.5, # Thinking models perform better with default/auto temperature
+                    temperature=settings.gemini_temperature,
                     max_output_tokens=8192,
                     response_mime_type="application/json",
                     response_schema=response_schema,
-                    # Enable Chain of Thought reasoning for better accuracy
-                    # 使用 thinking_level="HIGH" 以匹配 AI Studio 的配置
-                    thinking_config=types.ThinkingConfig(
-                        thinking_level="HIGH"
-                    )
+                    # 思考模式：部分场景能提升“数值推理/定位”稳定性，但也可能增加延迟
+                    thinking_config=types.ThinkingConfig(include_thoughts=True)
+                    if settings.gemini_enable_thinking
+                    else None,
                 )
             )
             

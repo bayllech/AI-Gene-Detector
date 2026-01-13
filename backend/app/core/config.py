@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     # Gemini API
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3-flash-preview"  # 默认模型
+    gemini_temperature: float = 1.0
+    gemini_enable_thinking: bool = True
     
     # 数据库
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
