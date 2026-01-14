@@ -245,6 +245,8 @@ export default function Result() {
         ctx.fillRect(0, drawHeight - 150, drawWidth, 150);
 
         // [DEBUG] 绘制脸部中心点（鼻尖）
+        // [DEBUG] 绘制脸部中心点（鼻尖）
+        /*
         ctx.save();
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 2;
@@ -261,6 +263,7 @@ export default function Result() {
         ctx.fillStyle = '#fbbf24';
         ctx.fill();
         ctx.restore();
+        */
 
         // -------------------------------------------------
         // 5. 绘制循环
