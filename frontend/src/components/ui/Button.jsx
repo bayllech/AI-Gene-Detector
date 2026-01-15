@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
 const Button = React.forwardRef(({ className, variant = 'primary', size = 'default', ...props }, ref) => {

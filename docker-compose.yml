@@ -13,6 +13,7 @@ services:
     # 如果还需要覆盖或添加额外的变量，可以在下面继续列出
     environment:
       - ENABLE_DOCS=false
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://ai.778ba.com}
     ports:
       - "8000:8000"
 
