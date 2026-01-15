@@ -135,7 +135,9 @@ class GeminiService:
                     data=father_image, mime_type=father_mime_type or "image/jpeg"
                 )
             )
-        
+        else:
+            parts.append(types.Part.from_text(text="父亲照片：未提供"))
+
         if mother_image:
             parts.append(types.Part.from_text(text="母亲照片："))
             parts.append(
@@ -143,7 +145,42 @@ class GeminiService:
                     data=mother_image, mime_type=mother_mime_type or "image/jpeg"
                 )
             )
+        else:
+            parts.append(types.Part.from_text(text="母亲照片：未提供"))
         
+        # 动态提示词：处理单亲情况 (逻辑优化 v2)
+        # 核心策略：单亲模式下，所有相似度必须相对于"存在的家长"。
+        # 像对方 = 不像我 (分数 100 - X)
+        
+        single_parent_mode = False
+        target_role = ""
+
+        if father_image and not mother_image:
+            single_parent_mode = True
+            target_role = "Father"
+            parts.append(types.Part.from_text(text="""
+            **重要约束 (Single Parent Mode):**
+            1. 用户仅上传了【父亲】照片。
+            2. JSON 中所有 analysis_results 的 `similar_to` 字段必须严格强制为 "Father"。**严禁出现 "Mother"。**
+            3. 评分逻辑：
+               - 如果部位像父亲：`similarity_score` 给高分 (60-99)。
+               - 如果部位**不像**父亲 (或像缺席的母亲)：`similarity_score` 必须给**低分 (10-40)**，代表相似度低。
+            4. description 文案：请只点评"孩子与父亲在xx处的相似或不同"，**不要提及母亲**。
+            """))
+            
+        elif mother_image and not father_image:
+            single_parent_mode = True
+            target_role = "Mother"
+            parts.append(types.Part.from_text(text="""
+            **重要约束 (Single Parent Mode):**
+            1. 用户仅上传了【母亲】照片。
+            2. JSON 中所有 analysis_results 的 `similar_to` 字段必须严格强制为 "Mother"。**严禁出现 "Father"。**
+            3. 评分逻辑：
+               - 如果部位像母亲：`similarity_score` 给高分 (60-99)。
+               - 如果部位**不像**母亲 (或像缺席的父亲)：`similarity_score` 必须给**低分 (10-40)**，代表相似度低。
+            4. description 文案：请只点评"孩子与母亲在xx处的相似或不同"，**不要提及父亲**。
+            """))
+
         parts.append(types.Part.from_text(text="孩子照片（请基于此图输出坐标）："))
         parts.append(types.Part.from_bytes(data=child_image, mime_type=child_mime_type))
         
@@ -170,25 +207,82 @@ class GeminiService:
                         f"-------------------------------------------------------------")
 
             # 调用 Gemini API
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=settings.gemini_temperature,
-                    max_output_tokens=8192,
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
-                    # 思考模式：部分场景能提升“数值推理/定位”稳定性，但也可能增加延迟
-                    thinking_config=types.ThinkingConfig(include_thoughts=True)
-                    if settings.gemini_enable_thinking
-                    else None,
-                )
-            )
+            # 注意：不再使用 response_schema，改回纯文本模式以避免 SDK 在空响应时崩溃
+            # 我们通过 response_mime_type="application/json" 提示模型输出 JSON
+            
+            # 增加重试机制，应对 503 Overloaded
+            max_retries = 3
+            retry_delay = 2 # seconds
+            import time
+            from google.genai.errors import ServerError
+            
+            response = None
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_INSTRUCTION,
+                            temperature=settings.gemini_temperature,
+                            max_output_tokens=8192,
+                            response_mime_type="application/json", # 依然请求 JSON 格式
+                            # response_schema=response_schema, # 暂时移除 schema，避免 SDK 内部解析错误
+                            # 思考模式：暂时关闭，以解决返回空内容问题
+                            # thinking_config=types.ThinkingConfig(include_thoughts=True)
+                            # if settings.gemini_enable_thinking
+                            # else None,
+                            # 安全设置
+                            safety_settings=[
+                                types.SafetySetting(
+                                    category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"
+                                ),
+                                types.SafetySetting(
+                                    category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"
+                                ),
+                                types.SafetySetting(
+                                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"
+                                ),
+                                types.SafetySetting(
+                                    category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"
+                                ),
+                            ]
+                        )
+                    )
+                    # 如果成功调用，跳出重试循环
+                    break
+                except ServerError as e:
+                    if e.code == 503:
+                        last_error = e
+                        logger.warning(f"Gemini 服务过载 (503)，正在重试 ({attempt + 1}/{max_retries})...")
+                        time.sleep(retry_delay * (attempt + 1)) # 线性退避
+                    else:
+                        raise e # 其他 API 错误直接抛出
+                except Exception as e:
+                    raise e # 其他异常直接抛出
+            
+            # 如果重试完还是失败
+            if response is None and last_error:
+                raise last_error
             
             # 解析响应
             result_text = response.text
-            # logger.info(f"Gemini 原始响应: {result_text[:200]}...") # 移除旧的原始截断日志
+            
+            # 兼容性检查：如果 text 依然为空，抛出更明确的错误而不是崩在 SDK 内部
+            if not result_text:
+                error_msg = "Gemini 返回了空内容 (None)。可能被安全策略拦截，或模型拒绝回答。"
+                # 尝试检查是否有候选对象的安全评级信息
+                try:
+                    if response.candidates:
+                         error_msg += f" 候选结果: {response.candidates[0].finish_reason}"
+                except:
+                    pass
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            # logger.info(f"Gemini 原始响应: {result_text[:200]}...")
             
             # 强化清洗逻辑
             try:
@@ -202,6 +296,26 @@ class GeminiService:
 
                 # 尝试标准解析
                 result = json.loads(cleaned_text)
+
+                # -------------------------------------------------------
+                # 数据清洗与兜底 (Single Parent Enforcer)
+                # -------------------------------------------------------
+                if single_parent_mode and target_role:
+                    if "analysis_results" in result:
+                        for item in result["analysis_results"]:
+                            current_role = item.get("similar_to")
+                            current_score = item.get("similarity_score", 50)
+                            
+                            # 如果 AI 返回了不存在的家长 (叛逆情况)
+                            if current_role != target_role:
+                                logger.warning(f"单亲模式纠正: {item['part']} 指向了 {current_role}, 强制重定向至 {target_role}")
+                                item["similar_to"] = target_role
+                                # 既然 AI 认为像缺席方，说明不像当前方 -> 反转分数
+                                # 例: 像 Mother 80% -> 像 Father 20%
+                                item["similarity_score"] = 100 - current_score
+                                
+                                # 简单的文案修饰 (可选，防止文案里还提缺席方)
+                                # item["description"] = f"(自动校正) {item['description']}"
                 
                 # -------------------------------------------------------
                 # 2. 打印响应日志 (Response Log)
