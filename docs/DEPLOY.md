@@ -1,8 +1,52 @@
 # AI 亲子基因探测器 - 线上部署指南 (v1.0)
 
-本指南针对 Linux 服务器（Ubuntu/Debian/CentOS）环境，介绍如何从零部署 AI 亲子基因探测器项目。
+# AI 亲子基因探测器 - 线上部署指南 (v1.0)
 
-## 📋 1. 环境准备
+本指南提供两种部署方式：**Docker 容器化部署 (推荐)** 和 **传统手动部署**。
+
+---
+
+## 🐳 方式一：Docker 容器化部署 (推荐)
+
+最简单、快速的部署方式，无需手动配置环境。
+
+### 1.1 环境准备
+- 安装 Docker 和 Docker Compose
+- 获取代码：`git clone <repo> ai-gene-detector && cd ai-gene-detector`
+
+### 1.2 配置环境变量
+创建 `.env` 文件：
+```bash
+# 必填：Google Gemini API Key
+GEMINI_API_KEY=your_api_key_here
+
+# 必填：管理员密码 (用于批量生成激活码)
+ADMIN_PASSWORD=your_secure_password
+
+# 选填：CORS 域名 (默认 http://localhost)
+CORS_ORIGINS=http://your-domain.com
+```
+
+### 1.3 启动服务
+```bash
+docker-compose up -d --build
+```
+服务启动后，访问 `http://localhost` (或服务器 IP) 即可看到应用。
+
+### 1.4 常用 Docker 命令
+- **查看日志**: `docker-compose logs -f`
+- **停止服务**: `docker-compose down`
+- **更新代码后重新部署**:
+  ```bash
+  git pull
+  docker-compose up -d --build
+  ```
+
+---
+
+## 🛠 方式二：传统手动部署 - Linux 服务器
+
+### 2.1 环境准备
 
 ### 1.1 系统要求
 - **OS**: Ubuntu 22.04 LTS (推荐)

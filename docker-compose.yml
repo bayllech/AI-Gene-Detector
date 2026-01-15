@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: gene-backend
+    restart: always
+    volumes:
+      - ./backend/data:/app/data  # 挂载数据目录持久化
+    # 直接加载 backend/.env 文件中的所有变量
+    env_file:
+      - ./backend/.env
+    # 如果还需要覆盖或添加额外的变量，可以在下面继续列出
+    environment:
+      - ENABLE_DOCS=false
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: gene-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

@@ -3,8 +3,10 @@
  * 连接后端 FastAPI 服务
  */
 
-// API 基础地址（开发环境）
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// API 基础地址
+// 生产环境(PROD)下默认为空（使用相对路径，走Nginx反代）
+// 开发环境(DEV)下默认为 http://localhost:8000
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
 /**
  * 通用请求封装

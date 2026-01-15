@@ -89,7 +89,7 @@ export default function Home() {
                         </div>
                     </div>
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-                        AI 亲子基因探测
+                        AI娱乐-孩子更像谁
                     </h1>
                     <p className="text-slate-400">
                         上传照片，探索孩子更像谁
@@ -102,7 +102,7 @@ export default function Home() {
                         <div className="aspect-[3/4] bg-slate-800 rounded-md mb-2 overflow-hidden relative">
                             <img src="https://images.unsplash.com/photo-1511895426328-dc8714191300?w=300&q=80" alt="Father" className="object-cover w-full h-full opacity-70" />
                         </div>
-                        <div className="text-[10px] text-center text-slate-400">父系特征分析</div>
+                        <div className="text-[10px] text-center text-slate-400">父母特征分析</div>
                     </div>
                     <div className="bg-surface/50 p-2 rounded-lg border border-slate-700/50 backdrop-blur-sm">
                         <div className="aspect-[3/4] bg-slate-800 rounded-md mb-2 overflow-hidden relative">
