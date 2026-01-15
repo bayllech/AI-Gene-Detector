@@ -96,67 +96,39 @@ async def verify_code(
         )
     
     else:
-        # 特殊处理测试码：允许任意设备即使在已使用状态下也能通过（方便测试）
-        # 或者你也可以选择让它重置绑定。这里我们选择：如果匹配则由于，不匹配则警告还是允许？
-        # 用户需求是 "设置为测试专用"，通常意味着不限制设备。
-        is_test_key = (code == settings.test_card_code)
+        # 【安全熔断】如果已激活超过 24 小时，即视为过期
+        if card.activated_at and datetime.now() - card.activated_at > timedelta(hours=settings.data_retention_hours):
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="此兑换码已过期失效"
+            )
 
-        # 【安全熔断】如果已激活超过 24 小时（且不是测试码），即视为过期
-        # 即使定时任务没有清理，这里也要拦截
-        if not is_test_key and card.activated_at:
-            if datetime.now() - card.activated_at > timedelta(hours=settings.data_retention_hours):
-                 raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="此兑换码已过期失效"
-                )
-
-        # 已使用，检查设备匹配
-        # 已使用，检查是否为测试码
-        # 【修改需求 2026-01-15】: 除了测试码外，禁止一切恢复会话的操作。
-        # 只要码被用过一次（Status=USED），再次输入即视为无效/已使用，不给看旧结果。
+        # 已使用，检查安全与状态
         
-        if is_test_key:
-             # 如果是测试码且设备变了，静默更新设备ID以便后续流程正常
-            if card.device_id != device_id:
-               card.device_id = device_id
-               await db.commit()
-               logger.info(f"测试码 {code} 重新绑定到设备 {device_id[:8]}...")
-            
-            # 检查是否有结果缓存
-            has_result = bool(card.result_cache)
+        # 1. 安全检查：必须是同一台设备（防止盗用）
+        if card.device_id != device_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="此码已被其他设备激活"
+            )
 
-            return VerifyCodeResponse(
-                success=True,
-                message="测试模式会话恢复",
-                restored=True,
-                has_result=has_result
+        # 2. 状态检查：是否已经有分析结果？
+        if card.result_cache:
+            # 已经有结果了 -> 说明服务已完成 -> 禁止二刷，视为失效
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="此兑换码已失效（一次性使用）"
             )
         else:
-            # 正式码逻辑
-            # 1. 安全检查：必须是同一台设备（防止盗用）
-            if card.device_id != device_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="此码已被其他设备激活"
-                )
-
-            # 2. 状态检查：是否已经有分析结果？
-            if card.result_cache:
-                # 已经有结果了 -> 说明服务已完成 -> 禁止二刷，视为失效
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="此兑换码已失效（一次性使用）"
-                )
-            else:
-                # 虽然已激活(USED)，但还没出结果 -> 允许用户回来继续上传
-                # 这种情况通常是用户在上传页刷新了，或者意外退出了
-                logger.info(f"兑换码 {code} 恢复上传会话...")
-                return VerifyCodeResponse(
-                    success=True,
-                    message="会话已恢复，请继续上传",
-                    restored=True,
-                    has_result=False
-                )
+            # 虽然已激活(USED)，但还没出结果 -> 允许用户回来继续上传
+            # 这种情况通常是用户在上传页刷新了，或者意外退出了
+            logger.info(f"兑换码 {code} 恢复上传会话...")
+            return VerifyCodeResponse(
+                success=True,
+                message="会话已恢复，请继续上传",
+                restored=True,
+                has_result=False
+            )
 
 
 class CreateCodeRequest(BaseModel):
@@ -190,21 +162,11 @@ async def check_status(
     if not card:
         return CheckStatusResponse(valid=False, has_result=False, message="无效的兑换码")
         
-    is_test_key = (code == settings.test_card_code)
-    
     # 过期检查
-    if not is_test_key and card.activated_at:
-        if datetime.now() - card.activated_at > timedelta(hours=settings.data_retention_hours):
-             return CheckStatusResponse(valid=False, has_result=False, is_expired=True, message="已过期")
+    if card.activated_at and datetime.now() - card.activated_at > timedelta(hours=settings.data_retention_hours):
+         return CheckStatusResponse(valid=False, has_result=False, is_expired=True, message="已过期")
 
-    # 如果是未使用状态，在这里也视为不应该直接访问内部页面的状态（应该去首页激活）
-    # 但如果是 upload 页面的守卫来查，如果是未使用... 嗯，upload页面前提是已 verify。
-    # verify 接口会把 unused 变成 used。所以到了这里应该是 used。
-    # 唯一的例外是用户如果在首页没点按钮，直接输入 url。此时数据库里还是 unused。
-    # 那么 CheckStatus 应该返回 valid=False 吗？或者 valid=True 但需要激活？
-    # 简单点：只有 status=USED 才算 valid for internal pages。
-    
-    if card.status != CardStatus.USED and not is_test_key:
+    if card.status != CardStatus.USED:
          return CheckStatusResponse(valid=False, has_result=False, message="未激活")
 
     return CheckStatusResponse(

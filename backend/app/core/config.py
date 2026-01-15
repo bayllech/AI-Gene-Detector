@@ -35,8 +35,7 @@ class Settings(BaseSettings):
     # 临时存储
     temp_storage_path: str = "./data/temp"
     
-    # 测试配置
-    test_card_code: str = "TEST8888"
+
 
     # 管理员配置 (HTTP Basic Auth)
     admin_username: str = "admin"

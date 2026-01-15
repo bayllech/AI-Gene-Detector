@@ -67,22 +67,12 @@ async def verify_authorization(
     result = await db.execute(stmt)
     card = result.scalar_one_or_none()
     
-    is_test_key = (code == settings.test_card_code)
-
-    if not card or (card.status != CardStatus.USED and not is_test_key):
+    
+    if not card or card.status != CardStatus.USED:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="兑换码未激活或无效"
         )
-    
-    # 如果是测试码且未激活，自动激活（方便直接调用 analyze 接口）
-    if is_test_key and card.status != CardStatus.USED:
-        card.status = CardStatus.USED
-        card.activated_at = datetime.now()
-        # 测试模式下不需要严格校验 device_id，设置一个占位符即可
-        if not card.device_id:
-            card.device_id = "TEST_DEV_MODE"
-        await db.commit()
     
     return card
 
@@ -261,8 +251,7 @@ async def analyze_photos(
     
     # 【安全加固 2026-01-15】: 防止二次分析覆盖结果
     # 如果已经有结果，说明这是一次性消费已完成，禁止再次上传分析
-    is_test_key = (card.code == settings.test_card_code)
-    if card.result_cache and not is_test_key:
+    if card.result_cache:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="此兑换码已使用且结果已生成，禁止重复分析"
