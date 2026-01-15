@@ -34,7 +34,8 @@ export default function Analyze() {
 
             try {
                 const result = await analyzePhotos(code, images);
-                localStorage.setItem('analysis_result', JSON.stringify(result));
+                // 结果直接存入后端，不再前端 localStorage 缓存，防止多账号串号问题
+                // localStorage.setItem('analysis_result', JSON.stringify(result));
 
                 // Wait for steps to finish visually
                 setTimeout(() => {
@@ -42,8 +43,18 @@ export default function Analyze() {
                 }, 1000);
             } catch (e) {
                 console.error('分析失败:', e);
-                alert(`分析失败: ${e.message || '请重试'}`);
-                navigate('/');
+
+                // 【修复逻辑】如果错误提示包含"禁止重复分析"，说明结果已生成
+                // 此时不应该踢回首页，而应该直接跳转结果页
+                const isDuplicate = e.message.includes('禁止重复分析') || e.message.includes('已使用');
+
+                if (isDuplicate) {
+                    // alert('检测到结果已生成，正在跳转结果页...');
+                    navigate('/result');
+                } else {
+                    alert(`分析失败: ${e.message || '请重试'}`);
+                    navigate('/');
+                }
             }
         };
 

@@ -10,19 +10,28 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
  * 通用请求封装
  */
 async function request(url, options = {}) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-        ...options,
-        headers: {
-            ...options.headers,
-        },
-    });
+    try {
+        const response = await fetch(`${API_BASE_URL}${url}`, {
+            ...options,
+            headers: {
+                ...options.headers,
+            },
+        });
 
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: '请求失败' }));
-        throw new Error(error.detail || `HTTP ${response.status}`);
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: '请求失败' }));
+            throw new Error(error.detail || `HTTP ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        // 捕获 verify 429 错误（detail 已在上一步抛出，这里主要是捕获 fetch 本身的网络错误）
+        // "Failed to fetch" 是 fetch 在网络不通时的标准报错（TypeError）
+        if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+            throw new Error('无法连接到服务器，请检查网络或稍后重试');
+        }
+        throw error;
     }
-
-    return response.json();
 }
 
 /**
@@ -90,7 +99,20 @@ export const analyzePhotos = async (code, images) => {
  * @param {string} code - 兑换码
  */
 export const getCachedResult = async (code) => {
-    return request('/api/analyze/result', {
+    // 增加时间戳防止浏览器缓存 GET 请求
+    return request(`/api/analyze/result?_t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${code}`,
+        },
+    });
+};
+/**
+ * 检查兑换码状态
+ * @param {string} code - 兑换码
+ */
+export const checkCodeStatus = async (code) => {
+    return request('/api/code/check-status', {
         method: 'GET',
         headers: {
             'Authorization': `Bearer ${code}`,

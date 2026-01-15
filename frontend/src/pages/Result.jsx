@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { Download, RefreshCw, AlertCircle, Share2 } from 'lucide-react';
+import { Download, RefreshCw, AlertCircle, Share2, Loader2 } from 'lucide-react';
+import { getCachedResult } from '../services/api';
 
 export default function Result() {
     const canvasRef = useRef(null);
@@ -11,26 +12,56 @@ export default function Result() {
     const [childImage, setChildImage] = useState(null);
 
     useEffect(() => {
-        // Load data
-        const storedImages = localStorage.getItem('upload_images');
-        const storedResult = localStorage.getItem('analysis_result');
+        const fetchResult = async () => {
+            const activeCode = localStorage.getItem('active_code');
+            const storedImages = localStorage.getItem('upload_images');
 
-        if (!storedImages || !storedResult) {
-            navigate('/');
-            return;
-        }
+            // 如果没有激活码或本地图片（本地图片可能过期，但这里主要依赖结果）
+            // 其实这里应该稍微宽容一点，如果没有 upload_images，可能需要提示用户已过期。
+            // 但如果用户换了设备登录（恢复会话），localStorage 里是没有 upload_images 的。
+            // 这是一个待优化点：真正的跨设备恢复，应该让后端把图片（至少是孩子图片）也传回来，或者存到 CDN。
+            // 现阶段简化版：如果本地没图，就无法显示 Canvas，只能回首页重来。
 
-        const images = JSON.parse(storedImages);
-        const result = JSON.parse(storedResult);
-        setResultData(result);
+            if (!activeCode || !storedImages) {
+                console.log('Missing data:', { activeCode, hasImages: !!storedImages });
+                navigate('/');
+                return;
+            }
 
-        const img = new Image();
-        img.src = images.child;
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            setChildImage(img);
-            // drawCanvas is handled by useEffect
+            try {
+                console.log('Fetching result for code:', activeCode);
+                // 强制从后端拉取当前激活码对应的结果
+                // 这保证了结果与激活码的一一对应关系，杜绝"串号"
+                const result = await getCachedResult(activeCode);
+                console.log('Result received:', result);
+
+                if (result.success) {
+                    setResultData(result);
+
+                    // 加载图片
+                    const images = JSON.parse(storedImages);
+                    const img = new Image();
+                    img.src = images.child; // 这里依然依赖本地缓存的图片
+                    img.crossOrigin = "anonymous";
+                    img.onload = () => {
+                        setChildImage(img);
+                    };
+                    img.onerror = () => {
+                        console.error('Failed to load cached image');
+                        // 如果图片坏了，可能需要重新上传
+                        navigate('/upload');
+                    };
+                } else {
+                    // 后端说没有结果（可能被删了）
+                    navigate('/upload');
+                }
+            } catch (error) {
+                console.error('Failed to fetch result:', error);
+                navigate('/');
+            }
         };
+
+        fetchResult();
     }, [navigate]);
 
     // Redraw canvas on window resize or data change
@@ -530,11 +561,12 @@ export default function Result() {
                 </div>
 
                 <div className="mt-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                     <p>
-                        本结果仅供娱乐参考。AI 分析受拍摄角度、光线影响，不具备医学鉴定效力。
+                        <span className="text-red-400 font-bold block mb-1">⚠️ 重要提示：请立即保存结果！</span>
+                        为保护极度隐私，本结果为<span className="text-white font-bold">一次性阅后即焚</span>。
                         <br />
-                        <span className="text-slate-600 mt-1 block">为保护隐私，结果将在 24 小时后自动销毁。</span>
+                        页面关闭或输入新兑换码后，当前结果将<span className="text-red-400">永久销毁且无法找回</span>。
                     </p>
                 </div>
             </div>
@@ -543,9 +575,6 @@ export default function Result() {
                 <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto p-4 flex gap-3 transition-all duration-300">
                     <Button className="flex-1 text-base" onClick={handleSave}>
                         <Download className="w-4 h-4 mr-2" /> 保存相册
-                    </Button>
-                    <Button variant="outline" className="flex-1 text-base">
-                        <Share2 className="w-4 h-4 mr-2" /> 分享结果
                     </Button>
                 </div>
             </div>

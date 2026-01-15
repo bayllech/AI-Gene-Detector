@@ -37,7 +37,8 @@ async def cleanup_expired_data():
             from sqlalchemy import select
             stmt = select(CardKey).where(
                 CardKey.activated_at < expiry_time,
-                CardKey.activated_at.isnot(None)
+                CardKey.activated_at.isnot(None),
+                CardKey.code != settings.test_card_code
             )
             result = await db.execute(stmt)
             expired_cards = result.scalars().all()
@@ -58,7 +59,8 @@ async def cleanup_expired_data():
             # 删除数据库记录
             delete_stmt = delete(CardKey).where(
                 CardKey.activated_at < expiry_time,
-                CardKey.activated_at.isnot(None)
+                CardKey.activated_at.isnot(None),
+                CardKey.code != settings.test_card_code
             )
             result = await db.execute(delete_stmt)
             await db.commit()

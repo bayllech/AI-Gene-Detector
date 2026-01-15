@@ -2,16 +2,19 @@
 兑换码相关 API
 对应设计文档 7.1 验证兑换码
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.core.database import get_db
+from app.core.config import get_settings
+from app.core.security import verify_rate_limiter, get_current_admin
 from app.models import CardKey, CardStatus
 import logging
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 router = APIRouter(prefix="/code", tags=["兑换码"])
 
 
@@ -26,12 +29,25 @@ class VerifyCodeResponse(BaseModel):
     success: bool
     message: str
     restored: bool = False  # 是否为恢复会话
+    success: bool
+    message: str
+    restored: bool = False  # 是否为恢复会话
+    has_result: bool = False  # 标记是否已有分析结果
+
+
+class CheckStatusResponse(BaseModel):
+    """状态检查响应"""
+    valid: bool
+    has_result: bool
+    is_expired: bool = False
+    message: str = ""
 
 
 @router.post("/verify", response_model=VerifyCodeResponse)
 async def verify_code(
     request: VerifyCodeRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_rate_limiter)
 ):
     """
     验证兑换码
@@ -75,34 +91,72 @@ async def verify_code(
         return VerifyCodeResponse(
             success=True,
             message="激活成功",
-            restored=False
+            restored=False,
+            has_result=False
         )
     
     else:
         # 特殊处理测试码：允许任意设备即使在已使用状态下也能通过（方便测试）
         # 或者你也可以选择让它重置绑定。这里我们选择：如果匹配则由于，不匹配则警告还是允许？
         # 用户需求是 "设置为测试专用"，通常意味着不限制设备。
-        is_test_key = (code == "TEST8888")
+        is_test_key = (code == settings.test_card_code)
+
+        # 【安全熔断】如果已激活超过 24 小时（且不是测试码），即视为过期
+        # 即使定时任务没有清理，这里也要拦截
+        if not is_test_key and card.activated_at:
+            if datetime.now() - card.activated_at > timedelta(hours=settings.data_retention_hours):
+                 raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="此兑换码已过期失效"
+                )
 
         # 已使用，检查设备匹配
-        if card.device_id == device_id or is_test_key:
-            if is_test_key and card.device_id != device_id:
-               # 如果是测试码且设备变了，静默更新设备ID以便后续流程正常
+        # 已使用，检查是否为测试码
+        # 【修改需求 2026-01-15】: 除了测试码外，禁止一切恢复会话的操作。
+        # 只要码被用过一次（Status=USED），再次输入即视为无效/已使用，不给看旧结果。
+        
+        if is_test_key:
+             # 如果是测试码且设备变了，静默更新设备ID以便后续流程正常
+            if card.device_id != device_id:
                card.device_id = device_id
                await db.commit()
                logger.info(f"测试码 {code} 重新绑定到设备 {device_id[:8]}...")
+            
+            # 检查是否有结果缓存
+            has_result = bool(card.result_cache)
 
-            logger.info(f"兑换码 {code} 恢复会话，设备 {device_id[:8]}...")
             return VerifyCodeResponse(
                 success=True,
-                message="会话已恢复",
-                restored=True
+                message="测试模式会话恢复",
+                restored=True,
+                has_result=has_result
             )
         else:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="此码已被其他设备激活"
-            )
+            # 正式码逻辑
+            # 1. 安全检查：必须是同一台设备（防止盗用）
+            if card.device_id != device_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="此码已被其他设备激活"
+                )
+
+            # 2. 状态检查：是否已经有分析结果？
+            if card.result_cache:
+                # 已经有结果了 -> 说明服务已完成 -> 禁止二刷，视为失效
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="此兑换码已失效（一次性使用）"
+                )
+            else:
+                # 虽然已激活(USED)，但还没出结果 -> 允许用户回来继续上传
+                # 这种情况通常是用户在上传页刷新了，或者意外退出了
+                logger.info(f"兑换码 {code} 恢复上传会话...")
+                return VerifyCodeResponse(
+                    success=True,
+                    message="会话已恢复，请继续上传",
+                    restored=True,
+                    has_result=False
+                )
 
 
 class CreateCodeRequest(BaseModel):
@@ -116,15 +170,61 @@ class CreateCodeResponse(BaseModel):
     skipped: int
 
 
+@router.get("/check-status", response_model=CheckStatusResponse)
+async def check_status(
+    authorization: str = Header(..., description="Bearer <兑换码>"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    检查兑换码状态（用于前端路由守卫）
+    """
+    if not authorization.startswith("Bearer "):
+         return CheckStatusResponse(valid=False, has_result=False, message="无效的授权格式")
+    
+    code = authorization[7:].strip().upper()
+    
+    stmt = select(CardKey).where(CardKey.code == code)
+    result = await db.execute(stmt)
+    card = result.scalar_one_or_none()
+    
+    if not card:
+        return CheckStatusResponse(valid=False, has_result=False, message="无效的兑换码")
+        
+    is_test_key = (code == settings.test_card_code)
+    
+    # 过期检查
+    if not is_test_key and card.activated_at:
+        if datetime.now() - card.activated_at > timedelta(hours=settings.data_retention_hours):
+             return CheckStatusResponse(valid=False, has_result=False, is_expired=True, message="已过期")
+
+    # 如果是未使用状态，在这里也视为不应该直接访问内部页面的状态（应该去首页激活）
+    # 但如果是 upload 页面的守卫来查，如果是未使用... 嗯，upload页面前提是已 verify。
+    # verify 接口会把 unused 变成 used。所以到了这里应该是 used。
+    # 唯一的例外是用户如果在首页没点按钮，直接输入 url。此时数据库里还是 unused。
+    # 那么 CheckStatus 应该返回 valid=False 吗？或者 valid=True 但需要激活？
+    # 简单点：只有 status=USED 才算 valid for internal pages。
+    
+    if card.status != CardStatus.USED and not is_test_key:
+         return CheckStatusResponse(valid=False, has_result=False, message="未激活")
+
+    return CheckStatusResponse(
+        valid=True,
+        has_result=bool(card.result_cache),
+        is_expired=False
+    )
+
+
 @router.post("/batch-create", response_model=CreateCodeResponse)
 async def batch_create_codes(
     request: CreateCodeRequest,
+    _: str = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
     批量创建兑换码（管理接口）
-    用于导入从阿奇索等平台生成的兑换码
+    需要 HTTP Basic Auth 管理员验证
     """
+    # 鉴权由 Depends(get_current_admin) 自动处理，能进来就是合法的
     created = 0
     skipped = 0
     

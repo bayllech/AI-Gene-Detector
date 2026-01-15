@@ -10,6 +10,9 @@ import { Sparkles, Dna, ArrowRight } from 'lucide-react';
 export default function Home() {
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
+    const [agreed, setAgreed] = useState(false); // 新增状态
+
+
     const [error, setError] = useState('');
     const [fpHash, setFpHash] = useState('');
     const navigate = useNavigate();
@@ -25,6 +28,10 @@ export default function Home() {
 
         // Check local history
         const savedCode = localStorage.getItem('active_code');
+
+        // 清理旧的遗留数据（防止串号干扰）
+        localStorage.removeItem('analysis_result');
+
         if (savedCode) {
             // Optional: Auto redirect or show message
         }
@@ -34,6 +41,11 @@ export default function Home() {
         e.preventDefault();
         if (!code) return;
 
+        if (!agreed) {
+            setError('请先阅读并勾选用户协议');
+            return;
+        }
+
         setLoading(true);
         setError('');
 
@@ -41,9 +53,15 @@ export default function Home() {
             if (!fpHash) {
                 throw new Error('正在初始化安全组件，请稍后...');
             }
-            await verifyCode(code, fpHash);
+            const response = await verifyCode(code, fpHash);
             localStorage.setItem('active_code', code);
-            navigate('/upload');
+
+            // 如果已有结果，直接跳转到结果页
+            if (response.has_result) {
+                navigate('/result');
+            } else {
+                navigate('/upload');
+            }
         } catch (err) {
             setError(err.message || '验证失败，请重试');
         } finally {
@@ -141,8 +159,14 @@ export default function Home() {
                         </Button>
 
                         <div className="flex items-start gap-2 pt-2">
-                            <input type="checkbox" id="terms" className="mt-1 bg-transparent border-slate-600 rounded" />
-                            <label htmlFor="terms" className="text-xs text-slate-500 leading-tight">
+                            <input
+                                type="checkbox"
+                                id="terms"
+                                className="mt-1 bg-transparent border-slate-600 rounded cursor-pointer accent-primary"
+                                checked={agreed}
+                                onChange={(e) => setAgreed(e.target.checked)}
+                            />
+                            <label htmlFor="terms" className="text-xs text-slate-500 leading-tight cursor-pointer select-none">
                                 我已阅读并同意：本结果仅供娱乐，AI 分析受光线影响，无法退款。
                             </label>
                         </div>

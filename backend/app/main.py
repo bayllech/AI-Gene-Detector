@@ -8,6 +8,9 @@ from app.core.config import get_settings
 from app.core.database import init_db
 from app.api import api_router
 from app.services.scheduler import start_scheduler, stop_scheduler
+from app.core.security import get_current_admin
+from fastapi import Depends
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 import logging
 
 # 配置日志
@@ -46,7 +49,11 @@ app = FastAPI(
     title="AI 亲子基因探测器",
     description="基于 Google Gemini 的家庭面部特征分析服务",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # 禁用默认文档路由（由下方自定义路由接管，并增加密码保护）
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None
 )
 
 # 配置 CORS
@@ -58,8 +65,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由
+# 注册路由 (API)
 app.include_router(api_router)
+
+
+# --- 路由：文档安全保护 ---
+# 只有通过 Basic Auth 的管理员才能看到文档
+# 注意：生产环境 enable_docs 仍然控制是否彻底关闭，如果开启则强制要求密码
+
+@app.get("/docs", include_in_schema=False)
+async def get_swagger_documentation(username: str = Depends(get_current_admin)):
+    """受保护的 Swagger UI"""
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="API 文档 - 亲子基因探测器")
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc_documentation(username: str = Depends(get_current_admin)):
+    """受保护的 ReDoc"""
+    return get_redoc_html(openapi_url="/openapi.json", title="API 文档 - 亲子基因探测器")
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_open_api_endpoint(username: str = Depends(get_current_admin)):
+    """受保护的 OpenAPI Schema"""
+    return app.openapi()
 
 
 @app.get("/")

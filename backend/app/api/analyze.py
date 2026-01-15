@@ -67,7 +67,7 @@ async def verify_authorization(
     result = await db.execute(stmt)
     card = result.scalar_one_or_none()
     
-    is_test_key = (code == "TEST8888")
+    is_test_key = (code == settings.test_card_code)
 
     if not card or (card.status != CardStatus.USED and not is_test_key):
         raise HTTPException(
@@ -257,6 +257,15 @@ async def analyze_photos(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请至少上传父亲或母亲的照片"
+        )
+    
+    # 【安全加固 2026-01-15】: 防止二次分析覆盖结果
+    # 如果已经有结果，说明这是一次性消费已完成，禁止再次上传分析
+    is_test_key = (card.code == settings.test_card_code)
+    if card.result_cache and not is_test_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此兑换码已使用且结果已生成，禁止重复分析"
         )
     
     # 读取并处理图片

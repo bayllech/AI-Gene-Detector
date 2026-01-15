@@ -67,6 +67,11 @@ export default function Upload() {
         child: null
     });
 
+    // 每次进入上传页，清理上一次可能残留的图片数据
+    if (!images.child && localStorage.getItem('upload_images')) {
+        localStorage.removeItem('upload_images');
+    }
+
     const handleNext = () => {
         // Save to local storage to pass to analyze page (mocking upload)
         localStorage.setItem('upload_images', JSON.stringify(images));
