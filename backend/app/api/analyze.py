@@ -150,22 +150,20 @@ def _pil_format_to_mime(pil_format: Optional[str]) -> Optional[str]:
     return None
 
 
+def format_mb(size_in_bytes: int) -> str:
+    return f"{size_in_bytes / (1024 * 1024):.2f} MB"
+
 def prepare_image_for_gemini(
     file_bytes: bytes,
     content_type: Optional[str],
+    label: str,
     *,
     max_dim: int = 8192,
-    max_bytes: int = 20 * 1024 * 1024,
+    max_bytes: int = 10 * 1024 * 1024,
+    quality: int = 95
 ) -> tuple[bytes, str]:
     """
-    为 Gemini 准备图片输入：优先保持原始文件字节，以最大化与 AI Studio 对齐。
-
-    常见偏移根因：
-    - 后端把上传图片重新编码成 JPEG，丢失 EXIF 方向等元数据；
-    - 前端展示的是原文件（浏览器会自动应用 EXIF 方向），导致“模型看到的图”和“用户看到的图”不一致；
-    - 或 mime_type 声明不匹配，导致服务端解码行为异常。
-
-    返回：(bytes, mime_type)
+    为 Gemini 准备图片输入
     """
     normalized_ct = _normalize_mime_type(content_type)
 
@@ -181,12 +179,10 @@ def prepare_image_for_gemini(
 
         within_dim = max(img.size) <= max_dim
         within_bytes = len(file_bytes) <= max_bytes
-
         orientation_ok = (orientation == 1)
         keep_mimes = {"image/jpeg", "image/png", "image/webp"}
 
-        # 满足条件就不做任何处理：保持字节不变（最贴近 AI Studio 行为）
-        # - JPEG 额外要求 EXIF Orientation 为 1（否则用户看到的方向可能与模型解码方向不一致）
+        # 满足条件: 保持原样
         if (
             mime_type in keep_mimes
             and within_dim
@@ -194,36 +190,48 @@ def prepare_image_for_gemini(
             and (mime_type != "image/jpeg" or orientation_ok)
         ):
             logger.info(
-                f"图片保持原始字节发送 Gemini: mime={mime_type}, size={img.size}, bytes={len(file_bytes)}"
+                f"[{label}] 保持原始发送: mime={mime_type}, "
+                f"尺寸={img.size}, 大小={len(file_bytes)} bytes ({format_mb(len(file_bytes))})"
             )
             return file_bytes, mime_type
 
-        # 否则：做最小必要的标准化（方向/透明通道/超大尺寸/输出格式）
+        # 否则: 标准化处理
+        # 1. 自动旋转
         img = ImageOps.exif_transpose(img)
+        # 2. 转 RGB
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-
+        
+        # 3. 压缩尺寸 (仅当超过 max_dim 时)
         if max(img.size) > max_dim:
             ratio = max_dim / max(img.size)
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
-
+            logger.info(f"[{label}] 触发尺寸压缩: {max_dim}px 限制")
+        
+        # 4. 重新编码 (JPEG)
         buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=95)
+        img.save(buffer, format="JPEG", quality=quality)
         out_bytes = buffer.getvalue()
+        
         logger.info(
-            "图片已标准化后发送 Gemini: "
-            f"in_mime={mime_type}, in_size={img.size}, in_bytes={len(file_bytes)}, "
-            f"out_mime=image/jpeg, out_bytes={len(out_bytes)}"
+            f"[{label}] 标准化处理后 (Q={quality}): "
+            f"in_mime={mime_type}, in_size={img.size}, in_bytes={format_mb(len(file_bytes))} -> "
+            f"out_mime=image/jpeg, out_bytes={format_mb(len(out_bytes))}"
         )
         return out_bytes, "image/jpeg"
     except Exception as e:
-        logger.error(f"图片处理失败: {e}")
+        logger.error(f"[{label}] 图片处理失败: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="图片格式无效或已损坏"
+            detail=f"{label} 图片格式无效或已损坏"
         )
 
+
+
+# 简单的内存锁，防止同一激活码并发调用 Gemini
+# 注意：多实例部署时依然可能并发，但 Docker Compose 单实例足够用
+processing_codes = set()
 
 @router.post("", response_model=AnalysisResponse)
 async def analyze_photos(
@@ -235,13 +243,15 @@ async def analyze_photos(
 ):
     """
     上传照片并进行 AI 分析
-    
-    逻辑（来自设计文档）：
-    1. 校验 code 是否在 card_keys 表中且已激活
-    2. 调用 Gemini API 分析
-    3. 将 JSON 存入 card_keys.result_cache
-    4. 返回 JSON 给前端
     """
+    # 0. 并发控制: 内存锁
+    if card.code in processing_codes:
+        logger.warning(f"拒绝并发请求: {card.code} 正在分析中")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="分析正在进行中，请耐心等待..."
+        )
+
     # 检查是否至少有一个家长照片
     if not father and not mother:
         raise HTTPException(
@@ -250,30 +260,59 @@ async def analyze_photos(
         )
     
     # 【安全加固 2026-01-15】: 防止二次分析覆盖结果
-    # 如果已经有结果，说明这是一次性消费已完成，禁止再次上传分析
     if card.result_cache:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="此兑换码已使用且结果已生成，禁止重复分析"
         )
     
-    # 读取并处理图片
-    child_bytes_raw = await child.read()
-    child_bytes, child_mime_type = prepare_image_for_gemini(child_bytes_raw, child.content_type)
-
-    father_bytes = None
-    father_mime_type = None
-    if father:
-        father_bytes_raw = await father.read()
-        father_bytes, father_mime_type = prepare_image_for_gemini(father_bytes_raw, father.content_type)
-
-    mother_bytes = None
-    mother_mime_type = None
-    if mother:
-        mother_bytes_raw = await mother.read()
-        mother_bytes, mother_mime_type = prepare_image_for_gemini(mother_bytes_raw, mother.content_type)
     
     try:
+        # 上锁
+        processing_codes.add(card.code)
+
+        # 读取并处理图片
+        # 1. 孩子照片: 阈值 6MB。保持高分辨率 (max_dim=8192)，压缩质量 95 (轻微)。
+        # 关键：避免 resize 导致坐标偏移。
+        child_bytes_raw = await child.read()
+        child_bytes, child_mime_type = prepare_image_for_gemini(
+            child_bytes_raw, 
+            child.content_type, 
+            "Child",
+            max_dim=8192, 
+            max_bytes=6 * 1024 * 1024,
+            quality=90
+        )
+
+        # 2. 父亲照片: 阈值 3MB。可以压缩 (max_dim=2048)，质量 85。
+        father_bytes = None
+        father_mime_type = None
+        if father:
+            father_bytes_raw = await father.read()
+            father_bytes, father_mime_type = prepare_image_for_gemini(
+                father_bytes_raw, 
+                father.content_type, 
+                "Father",
+                max_dim=2048,
+                max_bytes=3 * 1024 * 1024,
+                quality=85
+            )
+
+        # 3. 母亲照片: 阈值 3MB。可以压缩 (max_dim=2048)，质量 85。
+        mother_bytes = None
+        mother_mime_type = None
+        if mother:
+            mother_bytes_raw = await mother.read()
+            mother_bytes, mother_mime_type = prepare_image_for_gemini(
+                mother_bytes_raw, 
+                mother.content_type, 
+                "Mother",
+                max_dim=2048,
+                max_bytes=3 * 1024 * 1024,
+                quality=85
+            )
+
+
         # 调用 Gemini 分析
         result = await gemini_service.analyze_family_photos(
             child_image=child_bytes,
@@ -284,8 +323,39 @@ async def analyze_photos(
             mother_mime_type=mother_mime_type,
         )
         
+        # 保存图片到磁盘，生成持久化 URL (用于页面刷新/意外退出恢复)
+        images_dir = "data/images"
+        # os.makedirs(images_dir, exist_ok=True) # main.py 里已经创建了，这里可以直接用
+        
+        saved_paths = {}
+        
+        # 保存 Child
+        child_filename = f"{card.code}_child.jpg"
+        child_path = os.path.join(images_dir, child_filename)
+        with open(child_path, "wb") as f:
+            f.write(child_bytes)
+        saved_paths["child"] = f"/api/images/{child_filename}" # 前端可访问的 URL
+        
+        # 保存 Father
+        if father_bytes:
+            father_filename = f"{card.code}_father.jpg"
+            father_path = os.path.join(images_dir, father_filename)
+            with open(father_path, "wb") as f:
+                f.write(father_bytes)
+            saved_paths["father"] = f"/api/images/{father_filename}"
+            
+        # 保存 Mother
+        if mother_bytes:
+            mother_filename = f"{card.code}_mother.jpg"
+            mother_path = os.path.join(images_dir, mother_filename)
+            with open(mother_path, "wb") as f:
+                f.write(mother_bytes)
+            saved_paths["mother"] = f"/api/images/{mother_filename}"
+        
         # 缓存结果到数据库
         card.result_cache = json.dumps(result, ensure_ascii=False)
+        card.image_paths = json.dumps(saved_paths, ensure_ascii=False) # 保存图片路径
+        
         await db.commit()
         
         logger.info(f"分析完成，兑换码: {card.code}")
@@ -302,12 +372,17 @@ async def analyze_photos(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("AI 分析异常")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI 分析服务暂时不可用，请稍后重试"
         )
+    finally:
+        # 释放锁
+        processing_codes.discard(card.code)
 
 
 @router.get("/result")
@@ -325,9 +400,19 @@ async def get_cached_result(
         )
     
     result = json.loads(card.result_cache)
+    
+    # 尝试解析保存的图片路径
+    images = None
+    if card.image_paths:
+        try:
+            images = json.loads(card.image_paths)
+        except Exception:
+            logger.warning(f"Failed to parse image_paths for card {card.code}")
+            
     return {
         "success": True,
         "analysis_results": result.get("analysis_results", []),
         "face_center": result.get("face_center"),
-        "face_width": result.get("face_width")
+        "face_width": result.get("face_width"),
+        "images": images  # 返回图片 URL
     }

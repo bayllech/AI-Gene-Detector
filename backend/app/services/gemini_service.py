@@ -221,6 +221,9 @@ class GeminiService:
             
             for attempt in range(max_retries):
                 try:
+                    logger.info(f"正在调用 Gemini API (尝试 {attempt + 1}/{max_retries})...")
+                    start_time = time.time()
+                    
                     response = self.client.models.generate_content(
                         model=self.model_name,
                         contents=contents,
@@ -228,29 +231,63 @@ class GeminiService:
                             system_instruction=SYSTEM_INSTRUCTION,
                             temperature=settings.gemini_temperature,
                             max_output_tokens=8192,
-                            response_mime_type="application/json", # 依然请求 JSON 格式
-                            # response_schema=response_schema, # 暂时移除 schema，避免 SDK 内部解析错误
-                            # 思考模式：暂时关闭，以解决返回空内容问题
-                            # thinking_config=types.ThinkingConfig(include_thoughts=True)
-                            # if settings.gemini_enable_thinking
-                            # else None,
-                            # 安全设置
+                            response_mime_type="application/json",
                             safety_settings=[
-                                types.SafetySetting(
-                                    category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"
-                                ),
-                                types.SafetySetting(
-                                    category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"
-                                ),
-                                types.SafetySetting(
-                                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"
-                                ),
-                                types.SafetySetting(
-                                    category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"
-                                ),
+                                types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                                types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                                types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                                types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
                             ]
                         )
                     )
+                    
+                    duration = time.time() - start_time
+                    logger.info(f"Gemini API 调用成功，耗时: {duration:.2f}s")
+                    
+                    # 显式检查 response 是否为空
+                    if not response:
+                        logger.error("Gemini 返回了空对象 (None)")
+                        raise ValueError("Gemini API returned None")
+                    
+                    # 尝试获取文本
+                    try:
+                        result_text = response.text
+                    except Exception as e:
+                        logger.error(f"无法从 Gemini 响应中获取文本: {e}")
+                        # 打印一下 dir(response) 看看有什么
+                        logger.info(f"Response attributes: {dir(response)}")
+                        raise ValueError(f"Failed to extract text from response: {e}")
+
+                    if not result_text:
+                        logger.error(f"Gemini 返回了空文本 (response.text is empty). Finish reason: {response.candidates[0].finish_reason if response.candidates else 'Unknown'}")
+                        raise ValueError("Gemini response text is empty")
+                    
+                    # 记录原始返回（截取前500字符以防日志爆炸，但足以排查 JSON 格式问题）
+                    logger.info(f"Gemini 原始返回 (前500字符): {result_text[:500]}...")
+
+                    # 清理 Markdown 代码块标记 ```json ... ```
+                    cleaned_text = result_text.strip()
+                    if cleaned_text.startswith("```"):
+                        # 去掉第一行 (```json) 和最后一行 (```)
+                        lines = cleaned_text.split('\n')
+                        if len(lines) >= 2:
+                            # 找到第一个 ``` 和最后一个 ```
+                            first_code_block = -1
+                            last_code_block = -1
+                            for i, line in enumerate(lines):
+                                if line.strip().startswith("```"):
+                                    if first_code_block == -1:
+                                        first_code_block = i
+                                    else:
+                                        last_code_block = i
+                            
+                            if first_code_block != -1 and last_code_block != -1:
+                                cleaned_text = "\n".join(lines[first_code_block+1 : last_code_block])
+                            else:
+                                # 简单的fallback
+                                cleaned_text = cleaned_text.replace("```json", "").replace("```", "")
+                    
+                    logger.info("开始解析 JSON...")
                     # 如果成功调用，跳出重试循环
                     break
                 except ServerError as e:
@@ -268,7 +305,7 @@ class GeminiService:
                 raise last_error
             
             # 解析响应
-            result_text = response.text
+            # result_text = response.text # This line is now handled inside the retry loop
             
             # 兼容性检查：如果 text 依然为空，抛出更明确的错误而不是崩在 SDK 内部
             if not result_text:

@@ -66,7 +66,15 @@ app.add_middleware(
 )
 
 # 注册路由 (API)
+# 注册路由 (API)
 app.include_router(api_router)
+
+# 挂载静态文件目录 (用于存储和访问图片)
+from fastapi.staticfiles import StaticFiles
+import os
+
+os.makedirs("data/images", exist_ok=True)
+app.mount("/api/images", StaticFiles(directory="data/images"), name="images")
 
 
 # --- 路由：文档安全保护 ---

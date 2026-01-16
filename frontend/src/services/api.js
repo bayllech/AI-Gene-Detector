@@ -57,43 +57,69 @@ export const verifyCode = async (code, deviceId) => {
  * @param {Object} images - 图片对象 { child, father?, mother? }
  */
 export const analyzePhotos = async (code, images) => {
+    console.log(`[api.js] analyzePhotos called via FormData. Code: ${code ? code.substring(0, 4) + '***' : 'missing'}`);
+
+    // 如果 images 是数组，或者格式不对，打印警告
+    if (!images || typeof images !== 'object') {
+        console.error('[api.js] images parameter invalid:', images);
+    }
+
     const formData = new FormData();
 
     // 将 Base64 转换为 Blob
     const base64ToBlob = (base64) => {
-        const parts = base64.split(',');
-        const mime = parts[0].match(/:(.*?);/)[1];
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
+        try {
+            const parts = base64.split(',');
+            if (parts.length < 2) throw new Error('Invalid Base64 string');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+            const bstr = atob(parts[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], { type: mime });
+        } catch (e) {
+            console.error('[api.js] base64ToBlob failed:', e);
+            throw e;
         }
-        return new Blob([u8arr], { type: mime });
     };
 
-    // 添加孩子照片（必填）
-    if (images.child) {
-        formData.append('child', base64ToBlob(images.child), 'child.jpg');
-    }
+    try {
+        // 添加孩子照片（必填）
+        if (images.child) {
+            console.log('[api.js] Appending child image...');
+            formData.append('child', base64ToBlob(images.child), 'child.jpg');
+        } else {
+            console.warn('[api.js] Missing child image!');
+        }
 
-    // 添加父亲照片（选填）
-    if (images.father) {
-        formData.append('father', base64ToBlob(images.father), 'father.jpg');
-    }
+        // 添加父亲照片（选填）
+        if (images.father) {
+            console.log('[api.js] Appending father image...');
+            formData.append('father', base64ToBlob(images.father), 'father.jpg');
+        }
 
-    // 添加母亲照片（选填）
-    if (images.mother) {
-        formData.append('mother', base64ToBlob(images.mother), 'mother.jpg');
-    }
+        // 添加母亲照片（选填）
+        if (images.mother) {
+            console.log('[api.js] Appending mother image...');
+            formData.append('mother', base64ToBlob(images.mother), 'mother.jpg');
+        }
 
-    return request('/api/analyze', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${code}`,
-        },
-        body: formData,
-    });
+        console.log('[api.js] Sending request to /api/analyze...');
+        return await request('/api/analyze', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${code}`,
+                // 注意：由于是 FormData，不要手动设置 Content-Type，浏览器会自动设置 multipart/form-data 及 boundary
+            },
+            body: formData,
+        });
+    } catch (err) {
+        console.error('[api.js] analyzePhotos failed:', err);
+        throw err;
+    }
 };
 
 /**

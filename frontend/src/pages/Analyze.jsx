@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { analyzePhotos } from '../services/api';
 
@@ -12,64 +12,130 @@ const steps = [
 
 export default function Analyze() {
     const navigate = useNavigate();
-    const [currentStep, setCurrentStep] = useState(0);
-
+    const location = useLocation();
+    const [currentStep, setCurrentStep] = useState(0); // 恢复定义
+    const [error, setError] = useState(null);
     const analyzeCalled = useRef(false);
+    const pollIntervalRef = useRef(null); // 新增 Ref 追踪轮询定时器
 
     useEffect(() => {
-        // Start analysis
+        // ... (keep existing useEffect logic but replace alert with setError) ...
         const code = localStorage.getItem('active_code');
-        const storedImages = localStorage.getItem('upload_images');
+        let images = location.state?.images;
 
-        if (!code || !storedImages) {
+        if (!images) {
+            const stored = localStorage.getItem('upload_images');
+            if (stored) {
+                try { images = JSON.parse(stored); } catch (e) { }
+            }
+        }
+
+        if (!code || !images) {
             navigate('/');
             return;
         }
-
-        const images = JSON.parse(storedImages);
 
         const doAnalyze = async () => {
             if (analyzeCalled.current) return;
             analyzeCalled.current = true;
 
             try {
-                const result = await analyzePhotos(code, images);
-                // 结果直接存入后端，不再前端 localStorage 缓存，防止多账号串号问题
-                // localStorage.setItem('analysis_result', JSON.stringify(result));
+                // 如果您想增加一点延迟效果，可以在这里加 await new Promise(r => setTimeout(r, 2000));
+                await analyzePhotos(code, images);
 
-                // Wait for steps to finish visually
                 setTimeout(() => {
-                    navigate('/result');
+                    navigate('/result', { state: { images } });
                 }, 1000);
             } catch (e) {
                 console.error('分析失败:', e);
 
-                // 【修复逻辑】如果错误提示包含"禁止重复分析"，说明结果已生成
-                // 此时不应该踢回首页，而应该直接跳转结果页
-                const isDuplicate = e.message.includes('禁止重复分析') || e.message.includes('已使用');
+                // 1. 检测是否是"重复分析"（已完成）
+                const isDuplicate = e.message.includes('禁止重复分析') || e.message.includes('已使用') || e.message.includes('已生成');
+
+                // 2. 检测是否是"正在进行"（并发请求）
+                const isProcessing = e.message.includes('409') || e.message.includes('正在进行') || e.message.includes('耐心等待');
 
                 if (isDuplicate) {
-                    // alert('检测到结果已生成，正在跳转结果页...');
-                    navigate('/result');
+                    navigate('/result', { state: { images } });
+                } else if (isProcessing) {
+                    // 如果正在分析中，进入轮询模式
+                    console.log('检测到分析正在进行，开始轮询结果...');
+
+                    // 使用 Ref 存储定时器 ID
+                    pollIntervalRef.current = setInterval(async () => {
+                        try {
+                            const res = await getCachedResult(code);
+                            if (res && res.success) {
+                                clearInterval(pollIntervalRef.current);
+                                navigate('/result', { state: { images } });
+                            }
+                        } catch (pollErr) {
+                            // 忽略轮询错误
+                        }
+                    }, 3000);
+
+                    // 超时保护
+                    setTimeout(() => {
+                        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                        if (location.pathname.includes('analyze')) {
+                            setError('分析请求响应超时，请刷新重试。');
+                        }
+                    }, 120000);
+
                 } else {
-                    alert(`分析失败: ${e.message || '请重试'}`);
-                    navigate('/');
+                    let userMsg = "AI 大脑正在开小差，请稍后再试。";
+                    if (e.message && (e.message.includes('504') || e.message.includes('503') || e.message.includes('timeout'))) {
+                        userMsg = "分析请求超时（算力拥堵），您的兑换码依然有效，请重试。";
+                    } else if (e.message && e.message.includes('empty')) {
+                        userMsg = "AI 未能识别到有效面部特征，请尝试更换更清晰的照片。";
+                    } else {
+                        userMsg = e.message || "未知错误";
+                    }
+                    setError(userMsg);
                 }
             }
         };
 
         doAnalyze();
 
-        // Step animation logic
-        const interval = setInterval(() => {
+        const stepInterval = setInterval(() => {
             setCurrentStep(prev => {
                 if (prev < steps.length - 1) return prev + 1;
                 return prev;
             });
         }, 1200);
 
-        return () => clearInterval(interval);
-    }, [navigate]);
+        // 关键修复：组件卸载时，同时清理 步骤动画定时器 和 轮询定时器
+        return () => {
+            clearInterval(stepInterval);
+            if (pollIntervalRef.current) {
+                console.log('Cleaning up poll interval');
+                clearInterval(pollIntervalRef.current);
+            }
+        };
+    }, [navigate, location.state, location.pathname]); // 依赖项可能需要微调，但通常 navigate 足够
+
+    if (error) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-black p-6">
+                <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center shadow-2xl">
+                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500 w-8 h-8"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">哎呀，分析中断了</h3>
+                    <p className="text-slate-400 mb-6 text-sm leading-relaxed">
+                        {error}
+                    </p>
+                    <button
+                        onClick={() => navigate('/upload')}
+                        className="w-full py-3 px-4 bg-white text-black font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                    >
+                        返回重试 (兑换码有效)
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-black relative overflow-hidden p-6">

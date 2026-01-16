@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { verifyCode } from '../services/api';
@@ -16,8 +16,16 @@ export default function Home() {
     const [error, setError] = useState('');
     const [fpHash, setFpHash] = useState('');
     const navigate = useNavigate();
+    const location = useLocation(); // 新增 Hook
 
     useEffect(() => {
+        // 1. 检查是否有跳转传过来的错误信息 (例如从 Result 页跳回)
+        if (location.state?.error) {
+            setError(location.state.error);
+            // 清除 state，防止刷新页面时错误信息依然存在
+            window.history.replaceState({}, document.title);
+        }
+
         // Initialize fingerprint
         const setFp = async () => {
             const fp = await FingerprintJS.load();
@@ -35,7 +43,7 @@ export default function Home() {
         if (savedCode) {
             // Optional: Auto redirect or show message
         }
-    }, []);
+    }, [location]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();

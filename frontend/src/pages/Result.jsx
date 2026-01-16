@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Download, RefreshCw, AlertCircle, Share2, Loader2 } from 'lucide-react';
 import { getCachedResult } from '../services/api';
@@ -8,48 +8,63 @@ export default function Result() {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const navigate = useNavigate();
+    const location = useLocation();
     const [resultData, setResultData] = useState(null);
     const [childImage, setChildImage] = useState(null);
 
     useEffect(() => {
         const fetchResult = async () => {
             const activeCode = localStorage.getItem('active_code');
-            const storedImages = localStorage.getItem('upload_images');
 
-            // 如果没有激活码或本地图片（本地图片可能过期，但这里主要依赖结果）
-            // 其实这里应该稍微宽容一点，如果没有 upload_images，可能需要提示用户已过期。
-            // 但如果用户换了设备登录（恢复会话），localStorage 里是没有 upload_images 的。
-            // 这是一个待优化点：真正的跨设备恢复，应该让后端把图片（至少是孩子图片）也传回来，或者存到 CDN。
-            // 现阶段简化版：如果本地没图，就无法显示 Canvas，只能回首页重来。
+            // 1. 尝试从 State 获取图片 (最高优先级，无网络延迟)
+            let imagesObj = location.state?.images;
 
-            if (!activeCode || !storedImages) {
-                console.log('Missing data:', { activeCode, hasImages: !!storedImages });
+            // 2. 尝试本地兼容 (次优) - 注意我们稍后可能会废弃这个，因为 quota 问题
+            if (!imagesObj) {
+                const stored = localStorage.getItem('upload_images');
+                if (stored) {
+                    try { imagesObj = JSON.parse(stored); } catch (e) { }
+                }
+            }
+
+            if (!activeCode) {
                 navigate('/');
                 return;
             }
 
             try {
                 console.log('Fetching result for code:', activeCode);
-                // 强制从后端拉取当前激活码对应的结果
-                // 这保证了结果与激活码的一一对应关系，杜绝"串号"
                 const result = await getCachedResult(activeCode);
                 console.log('Result received:', result);
 
                 if (result.success) {
                     setResultData(result);
 
-                    // 加载图片
-                    const images = JSON.parse(storedImages);
+                    // 3. 核心修复：如果本地没图，尝试用后端返回的图片 URL
+                    if (!imagesObj && result.images && result.images.child) {
+                        console.log('Using remote images from backend:', result.images);
+                        imagesObj = result.images;
+                    }
+
+                    // 如果最终还是没图 (本地没了 + 后端也没存)，那就真的没办法了
+                    if (!imagesObj) {
+                        console.error('No images found (local or remote)');
+                        localStorage.removeItem('active_code');
+                        // 改为带错误信息跳转回首页，由首页显示友好提示
+                        navigate('/', { state: { error: '图片数据已失效，请重新验证。' } });
+                        return;
+                    }
+
+                    // 加载图片 (支持 Base64 和 URL)
                     const img = new Image();
-                    img.src = images.child; // 这里依然依赖本地缓存的图片
-                    img.crossOrigin = "anonymous";
+                    img.src = imagesObj.child;
+                    img.crossOrigin = "anonymous"; // 必须加，否则 canvas 跨域报错
                     img.onload = () => {
                         setChildImage(img);
                     };
-                    img.onerror = () => {
-                        console.error('Failed to load cached image');
-                        // 如果图片坏了，可能需要重新上传
-                        navigate('/upload');
+                    img.onerror = (e) => {
+                        console.error('Failed to load child image:', e);
+                        alert('图片加载失败');
                     };
                 } else {
                     // 后端说没有结果（可能被删了）

@@ -56,10 +56,16 @@ frontend/build/
 *.swo
 
 # Project Specific
-backend/data/*.db
-backend/data/images/*
-backend/data/temp/*
+backend/data/*
 !backend/data/.gitkeep
+
+# Certificates (Security)
+certs/
+frontend/certs/
+backend/certs/
+*.pem
+*.key
+*.crt
 
 # Logs
 logs/

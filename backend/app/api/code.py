@@ -105,6 +105,7 @@ async def verify_code(
 
         # 已使用，检查安全与状态
         
+        
         # 1. 安全检查：必须是同一台设备（防止盗用）
         if card.device_id != device_id:
             raise HTTPException(
@@ -114,10 +115,13 @@ async def verify_code(
 
         # 2. 状态检查：是否已经有分析结果？
         if card.result_cache:
-            # 已经有结果了 -> 说明服务已完成 -> 禁止二刷，视为失效
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="此兑换码已失效（一次性使用）"
+            # 有结果了，允许恢复查看（24小时内同一设备）
+            logger.info(f"兑换码 {code} 请求查看历史结果...")
+            return VerifyCodeResponse(
+                success=True,
+                message="正在恢复您的分析报告...",
+                restored=True,
+                has_result=True
             )
         else:
             # 虽然已激活(USED)，但还没出结果 -> 允许用户回来继续上传

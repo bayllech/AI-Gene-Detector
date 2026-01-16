@@ -73,9 +73,14 @@ export default function Upload() {
     }
 
     const handleNext = () => {
-        // Save to local storage to pass to analyze page (mocking upload)
-        localStorage.setItem('upload_images', JSON.stringify(images));
-        navigate('/analyze');
+        try {
+            // 使用 Router State 传递图片数据，避免 LocalStorage 容量限制 (通常 5MB)
+            console.log('[Upload] Navigating to /analyze with images...');
+            navigate('/analyze', { state: { images } });
+        } catch (e) {
+            console.error('[Upload] Navigation failed:', e);
+            alert('跳转失败，请重试');
+        }
     };
 
     const isValid = (images.father || images.mother) && images.child;
