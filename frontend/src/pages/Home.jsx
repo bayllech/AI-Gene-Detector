@@ -156,6 +156,12 @@ export default function Home() {
                         </div>
                     </form>
                 </div>
+
+                <div className="pt-6 pb-2 text-center">
+                    <p className="text-xs text-white/20 font-light tracking-wide hover:text-white/40 transition-colors cursor-default">
+                        需要兑换码，请联系：wxbeier669
+                    </p>
+                </div>
             </motion.div>
         </div>
     );

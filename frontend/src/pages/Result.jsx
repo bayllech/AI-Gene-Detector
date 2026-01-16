@@ -262,7 +262,7 @@ export default function Result() {
             (summaryH > 0 ? summaryH + cardGap : 0) +
             padding;
 
-        const totalHeight = drawHeight + sectionGap + dataSectionHeight;
+        const totalHeight = drawHeight + sectionGap + dataSectionHeight + 40; // Reserve space for watermark
 
         // Canvas Resize
         const canvas = ctx.canvas;
@@ -345,6 +345,18 @@ export default function Result() {
             const color = palette[results.findIndex(r => r.part === '总结') % palette.length];
             drawCard(ctx, summaryItem, cardX, currentRowY, availableWidth, summaryH, color, true);
         }
+
+        // -------------------------------------------------
+        // 6. 绘制水印
+        // -------------------------------------------------
+        ctx.save();
+        ctx.font = '14px Inter, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // 绘制在图片最底部
+        ctx.fillText('https://ai.778ba.com', containerWidth / 2, totalHeight - 20);
+        ctx.restore();
     };
 
     // 辅助：绘制连线和卡片 (封装之前的逻辑)
