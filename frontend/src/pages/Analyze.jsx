@@ -119,20 +119,20 @@ export default function Analyze() {
 
     if (error) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-black p-6">
-                <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center shadow-2xl">
-                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="min-h-screen flex flex-col items-center justify-center p-6">
+                <div className="w-full max-w-sm glass-card rounded-3xl p-8 text-center">
+                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500 w-8 h-8"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">哎呀，分析中断了</h3>
-                    <p className="text-slate-400 mb-6 text-sm leading-relaxed">
+                    <h3 className="text-xl font-bold text-white mb-3 tracking-wide">分析中断</h3>
+                    <p className="text-white/60 mb-8 text-sm leading-relaxed font-medium">
                         {error}
                     </p>
                     <button
                         onClick={() => navigate('/upload')}
-                        className="w-full py-3 px-4 bg-white text-black font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                        className="w-full py-3.5 bg-white text-black font-semibold rounded-full hover:bg-gray-100 transition-all active:scale-95 shadow-lg"
                     >
-                        返回重试 (兑换码有效)
+                        重试 (兑换码有效)
                     </button>
                 </div>
             </div>
@@ -140,23 +140,21 @@ export default function Analyze() {
     }
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-black relative overflow-hidden p-6">
-            <div className="absolute inset-0 z-0">
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[80vw] max-w-[800px] h-[80vw] max-h-[800px] bg-primary/10 rounded-full blur-[100px] animate-pulse-slow" />
-            </div>
+        <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden p-6">
+            {/* 移除背景div，使用全局 */}
 
             <div className="z-10 flex flex-col items-center w-full max-w-sm">
                 {/* Radar/Scan Animation */}
-                <div className="relative w-64 h-64 mb-12">
-                    <div className="absolute inset-0 border-2 border-slate-800 rounded-full" />
-                    <div className="absolute inset-4 border border-slate-700/50 rounded-full" />
-                    <div className="absolute inset-1/2 w-2 h-2 bg-primary rounded-full shadow-[0_0_20px_#3b82f6]" />
+                <div className="relative w-72 h-72 mb-16">
+                    <div className="absolute inset-0 border border-white/10 rounded-full bg-white/5 backdrop-blur-sm" />
+                    <div className="absolute inset-12 border border-white/5 rounded-full" />
+                    <div className="absolute inset-1/2 w-3 h-3 bg-blue-500 rounded-full shadow-[0_0_20px_#3b82f6] z-20" />
 
                     {/* Scan line */}
                     <motion.div
-                        className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/20 to-transparent w-full h-1/2 border-b-2 border-primary/50"
+                        className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/10 to-transparent w-full h-1/2 border-b border-blue-500/30"
                         animate={{ rotate: 360 }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
                         style={{ borderRadius: '50%', transformOrigin: 'bottom center' }}
                     />
 
@@ -164,26 +162,27 @@ export default function Analyze() {
                     {[...Array(5)].map((_, i) => (
                         <motion.div
                             key={i}
-                            className="absolute w-1 h-1 bg-accent rounded-full"
-                            initial={{ opacity: 0, scale: 0, x: 128, y: 128 }}
+                            className="absolute w-1.5 h-1.5 bg-white/50 rounded-full blur-[1px]"
+                            initial={{ opacity: 0, scale: 0, x: 144, y: 144 }}
                             animate={{
-                                opacity: [0, 1, 0],
+                                opacity: [0, 0.8, 0],
                                 scale: [0, 1.5],
-                                x: 128 + Math.cos(i) * 100,
-                                y: 128 + Math.sin(i) * 100
+                                x: 144 + Math.cos(i) * 120,
+                                y: 144 + Math.sin(i) * 120
                             }}
-                            transition={{ duration: 2, repeat: Infinity, delay: i * 0.4 }}
+                            transition={{ duration: 2.5, repeat: Infinity, delay: i * 0.4 }}
                         />
                     ))}
                 </div>
 
-                <div className="h-16 flex items-center justify-center">
+                <div className="h-20 flex flex-col items-center justify-center space-y-3">
+                    <span className="w-8 h-8 border-2 border-white/10 border-t-blue-500 rounded-full animate-spin mb-4" />
                     <motion.p
                         key={currentStep}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        className="text-primary font-mono text-center tracking-wide"
+                        initial={{ opacity: 0, y: 10, filter: 'blur(5px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        exit={{ opacity: 0, y: -10, filter: 'blur(5px)' }}
+                        className="text-white/90 text-lg font-medium text-center tracking-wide drop-shadow-md"
                     >
                         {steps[currentStep]}
                     </motion.p>

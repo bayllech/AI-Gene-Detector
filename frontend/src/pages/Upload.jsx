@@ -18,40 +18,42 @@ const ImageSlot = ({ label, required, value, onChange, onRemove }) => {
     };
 
     return (
-        <div className="space-y-2">
-            <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-300 font-medium">{label}</span>
+        <div className="space-y-3">
+            <div className="flex justify-between items-center px-1">
+                <span className="text-white/90 font-semibold tracking-wide text-sm">{label}</span>
                 {required ? (
-                    <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">必填</span>
+                    <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/20">必填</span>
                 ) : (
-                    <span className="text-xs text-slate-500">选填</span>
+                    <span className="text-[10px] font-medium text-white/40">选填</span>
                 )}
             </div>
 
             <div className={clsx(
-                "relative aspect-[3/4] rounded-xl border-2 border-dashed transition-all overflow-hidden group",
-                value ? "border-primary/50 bg-slate-900" : "border-slate-700 bg-slate-800/50 hover:border-slate-600"
+                "relative aspect-[3/4] rounded-3xl border-2 border-dashed transition-all duration-300 overflow-hidden group",
+                value
+                    ? "border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.15)] bg-slate-900"
+                    : "border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 hover:scale-[1.02] active:scale-[0.98]"
             )}>
                 {value ? (
                     <>
                         <img src={value} alt={label} className="w-full h-full object-cover" />
                         <button
                             onClick={onRemove}
-                            className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white backdrop-blur-sm hover:bg-red-500/80 transition-colors"
+                            className="absolute top-3 right-3 p-2 bg-black/40 rounded-full text-white backdrop-blur-md border border-white/10 hover:bg-red-500/80 transition-colors shadow-lg"
                         >
                             <X className="w-4 h-4" />
                         </button>
-                        <div className="absolute bottom-2 right-2 p-1 bg-green-500/80 rounded-full">
-                            <Check className="w-3 h-3 text-white" />
+                        <div className="absolute bottom-3 right-3 p-1.5 bg-green-500 rounded-full shadow-lg shadow-green-500/30">
+                            <Check className="w-3.5 h-3.5 text-white stroke-[3px]" />
                         </div>
                     </>
                 ) : (
                     <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer">
                         <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-                        <div className="p-3 rounded-full bg-slate-800 group-hover:bg-slate-700 transition-colors mb-2">
-                            <Plus className="w-6 h-6 text-slate-400" />
+                        <div className="p-4 rounded-full bg-white/5 border border-white/10 group-hover:bg-blue-500/10 group-hover:border-blue-500/30 transition-all duration-300 mb-3 shadow-inner">
+                            <Plus className="w-6 h-6 text-white/50 group-hover:text-blue-400 transition-colors" />
                         </div>
-                        <span className="text-xs text-slate-500 text-center px-4">点击上传</span>
+                        <span className="text-xs font-medium text-white/40 text-center px-4 group-hover:text-white/70 transition-colors">点击上传</span>
                     </label>
                 )}
             </div>

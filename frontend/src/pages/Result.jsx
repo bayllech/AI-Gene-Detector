@@ -555,41 +555,51 @@ export default function Result() {
     };
 
     return (
-        <div className="min-h-screen bg-background pb-20">
-            <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-slate-800">
-                <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto p-4 flex justify-between items-center transition-all duration-300">
-                    <h1 className="font-bold text-lg">分析报告</h1>
-                    <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-                        <RefreshCw className="w-4 h-4 mr-1" /> 重测
+
+        <div className="min-h-screen pb-24">
+            {/* Glass Header */}
+            <div className="sticky top-0 z-20 glass-card rounded-b-3xl border-t-0 mx-2 mt-0">
+                <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+                    <h1 className="font-bold text-lg text-white/90">基因解码报告</h1>
+                    <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="text-white/70 hover:text-white hover:bg-white/10">
+                        <RefreshCw className="w-4 h-4 mr-1.5" />
+                        <span className="text-sm">重测</span>
                     </Button>
                 </div>
             </div>
 
-            <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto p-4 transition-all duration-300">
-                <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-primary/10 border border-slate-800 bg-slate-900 min-h-[400px]" ref={containerRef}>
-                    <canvas ref={canvasRef} className="block w-full" />
+            <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto p-4 space-y-5">
+                {/* Canvas Container */}
+                <div className="relative rounded-3xl overflow-hidden glass-card p-1 min-h-[400px]" ref={containerRef}>
+                    <canvas ref={canvasRef} className="block w-full rounded-2xl" />
                     {!childImage && (
-                        <div className="absolute inset-0 flex items-center justify-center text-slate-500">
-                            加载结果中...
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 gap-3 backdrop-blur-sm bg-black/20">
+                            <span className="w-8 h-8 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin" />
+                            <span className="text-sm font-medium tracking-wide">正在渲染分析图谱...</span>
                         </div>
                     )}
                 </div>
 
-                <div className="mt-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
-                    <p>
-                        <span className="text-red-400 font-bold block mb-1">⚠️ 重要提示：请立即保存结果！</span>
-                        为保护极度隐私，本结果为<span className="text-white font-bold">一次性阅后即焚</span>。
-                        <br />
-                        页面关闭或输入新兑换码后，当前结果将<span className="text-red-400">永久销毁且无法找回</span>。
-                    </p>
+                {/* Warning Card */}
+                <div className="p-5 rounded-2xl border border-red-500/20 bg-red-500/5 backdrop-blur-md flex items-start gap-3 shadow-lg shadow-red-900/10">
+                    <div className="p-2 bg-red-500/10 rounded-full shrink-0">
+                        <AlertCircle className="w-5 h-5 text-red-500" />
+                    </div>
+                    <div className="text-sm space-y-1">
+                        <p className="font-bold text-red-400">⚠️ 结果即将销毁</p>
+                        <p className="text-red-200/70 leading-relaxed">
+                            为保护隐私，本报告为<span className="text-white font-semibold mx-1">阅后即焚</span>模式。
+                            请立即保存到相册，页面关闭后将无法找回。
+                        </p>
+                    </div>
                 </div>
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-slate-800">
-                <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto p-4 flex gap-3 transition-all duration-300">
-                    <Button className="flex-1 text-base" onClick={handleSave}>
-                        <Download className="w-4 h-4 mr-2" /> 保存相册
+            {/* Bottom Action Bar */}
+            <div className="fixed bottom-6 left-4 right-4 z-30 max-w-md md:max-w-3xl lg:max-w-4xl mx-auto">
+                <div className="glass-card p-2 rounded-full flex gap-2 shadow-2xl shadow-black/50">
+                    <Button className="flex-1 text-base rounded-full h-12 bg-white text-black hover:bg-gray-100 shadow-lg border-0 font-bold tracking-wide" onClick={handleSave}>
+                        <Download className="w-5 h-5 mr-2" /> 保存高清报告
                     </Button>
                 </div>
             </div>

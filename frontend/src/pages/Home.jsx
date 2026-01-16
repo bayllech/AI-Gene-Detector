@@ -79,63 +79,39 @@ export default function Home() {
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
-            {/* Background Effects */}
-            <div className="absolute inset-0 z-0">
-                <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[100px]" />
-                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-secondary/20 rounded-full blur-[100px]" />
-            </div>
+            {/* 移除旧背景，使用全局流体背景 */}
 
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="z-10 w-full max-w-md md:max-w-3xl lg:max-w-4xl space-y-8 flex flex-col items-center"
+                className="z-10 w-full max-w-sm md:max-w-md space-y-8 flex flex-col items-center"
             >
-                <div className="text-center space-y-2">
-                    <div className="flex justify-center mb-6">
-                        <div className="p-4 rounded-full bg-surface border border-slate-700 shadow-2xl shadow-primary/20">
-                            <Dna className="w-12 h-12 text-primary" />
+                <div className="text-center space-y-3">
+                    <div className="flex justify-center mb-8">
+                        <div className="p-5 rounded-full glass-card">
+                            <Dna className="w-14 h-14 text-white drop-shadow-[0_0_15px_rgba(41,151,255,0.5)]" />
                         </div>
                     </div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-                        AI娱乐-孩子更像谁
+                    <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight drop-shadow-md">
+                        AI 基因探测器
                     </h1>
-                    <p className="text-slate-400">
-                        上传照片，探索孩子更像谁
+                    <p className="text-white/60 text-sm md:text-base font-medium tracking-wide">
+                        上传全家福，一键揭秘基因密码
                     </p>
                 </div>
 
-                {/* Demo Cards (Simplified for MVP) */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-surface/50 p-2 rounded-lg border border-slate-700/50 backdrop-blur-sm">
-                        <div className="aspect-[3/4] bg-slate-800 rounded-md mb-2 overflow-hidden relative">
-                            <img src="https://images.unsplash.com/photo-1511895426328-dc8714191300?w=300&q=80" alt="Father" className="object-cover w-full h-full opacity-70" />
-                        </div>
-                        <div className="text-[10px] text-center text-slate-400">父母特征分析</div>
-                    </div>
-                    <div className="bg-surface/50 p-2 rounded-lg border border-slate-700/50 backdrop-blur-sm">
-                        <div className="aspect-[3/4] bg-slate-800 rounded-md mb-2 overflow-hidden relative">
-                            <img src="https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=300&q=80" alt="Child" className="object-cover w-full h-full opacity-70" />
-                            {/* Overlay lines simulation */}
-                            <svg className="absolute inset-0 w-full h-full">
-                                <circle cx="50%" cy="40%" r="3" fill="#3b82f6" />
-                                <line x1="50%" y1="40%" x2="80%" y2="20%" stroke="#3b82f6" strokeWidth="1" />
-                            </svg>
-                        </div>
-                        <div className="text-[10px] text-center text-slate-400">AI 智能匹配</div>
-                    </div>
-                </div>
-
-                <div className="bg-surface/80 backdrop-blur-xl p-6 rounded-2xl border border-slate-700 shadow-xl w-full max-w-md">
-                    <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Glass Card Container */}
+                <div className="glass-card p-6 md:p-8 rounded-3xl w-full">
+                    <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300 ml-1">
-                                兑换码
+                            <label className="text-sm font-semibold text-white/80 ml-1">
+                                兑换激活码
                             </label>
                             <Input
-                                placeholder="请输入兑换码"
+                                placeholder="输入您的专属CDK"
                                 value={code}
                                 onChange={(e) => setCode(e.target.value)}
-                                className="text-center text-lg tracking-widest uppercase"
+                                className="text-center text-lg tracking-widest uppercase font-mono glass-input"
                             />
                         </div>
 
@@ -143,7 +119,7 @@ export default function Home() {
                             <motion.div
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
-                                className="text-red-400 text-sm text-center bg-red-900/20 p-2 rounded"
+                                className="text-red-300 text-sm text-center bg-red-500/10 border border-red-500/20 p-3 rounded-xl backdrop-blur-md"
                             >
                                 {error}
                             </motion.div>
@@ -151,17 +127,17 @@ export default function Home() {
 
                         <Button
                             type="submit"
-                            className="w-full text-lg h-14"
+                            className="w-full text-lg h-14 font-semibold shadow-xl shadow-blue-500/20"
                             disabled={loading || !code}
                         >
                             {loading ? (
                                 <span className="flex items-center gap-2">
-                                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    验证中...
+                                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <span>验证中...</span>
                                 </span>
                             ) : (
                                 <span className="flex items-center gap-2">
-                                    开始 AI 探测 <ArrowRight className="w-5 h-5" />
+                                    开始探测 <ArrowRight className="w-5 h-5" />
                                 </span>
                             )}
                         </Button>
