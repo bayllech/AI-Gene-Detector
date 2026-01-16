@@ -23,5 +23,9 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      # 挂载 SSL 证书 (用于 Cloudflare Full SSL 模式)
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - backend
