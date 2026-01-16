@@ -158,8 +158,8 @@ export default function Home() {
                 </div>
 
                 <div className="pt-6 pb-2 text-center">
-                    <p className="text-xs text-white/50 font-light tracking-wide cursor-default">
-                        需要兑换码，请联系：wxbeier669
+                    <p className="text-sm text-white/60 font-medium tracking-wide">
+                        需要兑换码，请联系：<span className="text-white font-bold select-all">wxbeier669</span>
                     </p>
                 </div>
             </motion.div>
