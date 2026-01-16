@@ -72,15 +72,17 @@ export default function Analyze() {
                         } catch (pollErr) {
                             // 忽略轮询错误
                         }
+
+
                     }, 3000);
 
-                    // 超时保护
+                    // 设置一个 5 分钟的超时保护 (与 Nginx 保持一致)
                     setTimeout(() => {
                         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                         if (location.pathname.includes('analyze')) {
                             setError('分析请求响应超时，请刷新重试。');
                         }
-                    }, 120000);
+                    }, 300000);
 
                 } else {
                     let userMsg = "AI 大脑正在开小差，请稍后再试。";
