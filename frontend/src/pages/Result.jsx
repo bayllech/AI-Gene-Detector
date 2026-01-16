@@ -213,12 +213,12 @@ export default function Result() {
                 }
             }
 
-            const topSectionHeight = (isSummary ? 32 : 26) + extraHeaderHeight;
+            const topSectionHeight = (isSummary ? 36 : 28) + extraHeaderHeight;
 
-            // 2. 描述文字高度计算
-            ctx.font = isSummary ? '13px Inter, system-ui' : '11px Inter, system-ui';
-            const lineHeight = isSummary ? 22 : 16;
-            const text = item.description;
+            // 2. 描述文字高度计算 (Updated for larger font)
+            ctx.font = isSummary ? '15px Inter, system-ui' : '13px Inter, system-ui';
+            const lineHeight = isSummary ? 24 : 19;
+            const text = (item.description || '').replace(/基因/g, '特征');
             let lineCount = 1;
             let line = '';
 
@@ -232,8 +232,8 @@ export default function Result() {
             }
 
             const textBlockHeight = lineCount * lineHeight;
-            const bottomPadding = 15;
-            const topPadding = 14;
+            const bottomPadding = 18; // Slightly more padding
+            const topPadding = 16;
 
             return topPadding + topSectionHeight + textBlockHeight + bottomPadding;
         };
@@ -515,17 +515,20 @@ export default function Result() {
             ctx.fillText(` ${item.similarity_score}%`, x + indent + partW, topY);
         }
 
-        // --- 描述文字 ---
+        // --- 描述文字 (High Contrast Upgrade) ---
         ctx.textAlign = 'left';
-        ctx.fillStyle = isSummary ? '#e2e8f0' : '#cbd5e1';
-        ctx.font = isSummary ? '13px Inter, system-ui' : '11px Inter, system-ui';
+        // 总结用纯白，普通用 Slate-100 (增加亮度)
+        ctx.fillStyle = isSummary ? '#ffffff' : '#f1f5f9';
+        // 字体增大一号，增加清晰度
+        ctx.font = isSummary ? '15px Inter, system-ui' : '13px Inter, system-ui';
 
-        // 动态调整描述文字的起始 Y 坐标
-        const descY = topY + (isSummary ? 32 : 26) + extraHeaderHeight;
+        // 动态调整描述文字的起始 Y 坐标 (稍微增加头部间距)
+        const descY = topY + (isSummary ? 36 : 28) + extraHeaderHeight;
         const maxW = w - (indent * 2);
-        const lineHeight = isSummary ? 22 : 16;
+        // 行高增加，增加呼吸感
+        const lineHeight = isSummary ? 24 : 19;
 
-        const text = item.description;
+        const text = (item.description || '').replace(/基因/g, '特征');
         let line = '';
         let currentY = descY;
 
@@ -548,7 +551,7 @@ export default function Result() {
     const handleSave = () => {
         if (canvasRef.current) {
             const link = document.createElement('a');
-            link.download = `gene-analysis-${Date.now()}.png`;
+            link.download = `face-analysis-${Date.now()}.png`;
             link.href = canvasRef.current.toDataURL();
             link.click();
         }
@@ -560,7 +563,7 @@ export default function Result() {
             {/* Glass Header */}
             <div className="sticky top-0 z-20 glass-card rounded-b-3xl border-t-0 mx-2 mt-0">
                 <div className="w-full max-w-md md:max-w-3xl lg:max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-                    <h1 className="font-bold text-lg text-white/90">基因解码报告</h1>
+                    <h1 className="font-bold text-lg text-white/90">面部特征分析报告</h1>
                     <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="text-white/70 hover:text-white hover:bg-white/10">
                         <RefreshCw className="w-4 h-4 mr-1.5" />
                         <span className="text-sm">重测</span>

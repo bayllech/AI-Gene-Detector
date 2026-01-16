@@ -4,10 +4,10 @@ import { motion } from 'framer-motion';
 import { analyzePhotos } from '../services/api';
 
 const steps = [
-    "正在连接 Google Gemini 大脑...",
+    "正在连接 AI 分析大脑...",
     "正在提取面部 106 个特征点...",
-    "正在比对遗传相似度...",
-    "正在生成基因分析报告..."
+    "正在比对五官相似度...",
+    "正在生成特征分析报告..."
 ];
 
 export default function Analyze() {

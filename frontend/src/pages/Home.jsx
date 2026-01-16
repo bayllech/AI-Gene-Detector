@@ -93,10 +93,10 @@ export default function Home() {
                         </div>
                     </div>
                     <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight drop-shadow-md">
-                        AI 基因探测器
+                        AI娱乐 - 宝宝像谁
                     </h1>
                     <p className="text-white/60 text-sm md:text-base font-medium tracking-wide">
-                        上传全家福，一键揭秘基因密码
+                        上传全家福，一键揭秘面部特征密码
                     </p>
                 </div>
 
@@ -137,7 +137,7 @@ export default function Home() {
                                 </span>
                             ) : (
                                 <span className="flex items-center gap-2">
-                                    开始探测 <ArrowRight className="w-5 h-5" />
+                                    开始分析 <ArrowRight className="w-5 h-5" />
                                 </span>
                             )}
                         </Button>
