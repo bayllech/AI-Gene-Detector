@@ -350,8 +350,10 @@ export default function Result() {
         // 6. 绘制水印
         // -------------------------------------------------
         ctx.save();
-        ctx.font = '14px Inter, system-ui, sans-serif';
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.font = 'bold 16px Inter, system-ui, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 4;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         // 绘制在图片最底部
