@@ -87,7 +87,7 @@ export default function Analyze() {
                     if (e.message && (e.message.includes('504') || e.message.includes('503') || e.message.includes('timeout'))) {
                         userMsg = "分析请求超时（算力拥堵），您的兑换码依然有效，请重试。";
                     } else if (e.message && e.message.includes('empty')) {
-                        userMsg = "AI 未能识别到有效面部特征，请尝试更换更清晰的照片。";
+                        userMsg = "服务器繁忙（AI响应异常），请点击重试。";
                     } else {
                         userMsg = e.message || "未知错误";
                     }
